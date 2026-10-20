@@ -17,7 +17,79 @@ The launcher creates the effective configuration inline, without temporary YAMLs
 The old numbered YAMLs remain available for direct `--config` launches.
 
 
-Configuration preview (excerpts; keep the remaining settings in the real files).
+## Install download tools and download the dataset/model
+
+Run these commands from the APPFL repository root after preparing the environment:
+
+```bash
+bash examples/grpc/setup_llama400m_env.sh
+export APPFL_VENV="${APPFL_VENV:-$PWD/appfl_venv_v2}"
+source "$APPFL_VENV/bin/activate"
+python -m pip install -U huggingface_hub
+```
+
+The [Hugging Face CLI](https://huggingface.co/docs/huggingface_hub/en/guides/cli)
+method below requires neither sudo nor Git LFS. Download only the first English
+[C4 training shard](https://huggingface.co/datasets/allenai/c4/blob/main/en/c4-train.00000-of-01024.json.gz)
+(shard 0 of 1024, approximately 319 MB) and the complete
+[Llama-3.2-400M-Instruct-85k checkpoint](https://huggingface.co/yosefw/Llama-3.2-400M-Instruct-85k),
+including its configuration and tokenizer:
+
+```bash
+hf download allenai/c4 \
+  en/c4-train.00000-of-01024.json.gz \
+  --repo-type dataset \
+  --local-dir /home/ahmadhossein/c4
+
+hf download yosefw/Llama-3.2-400M-Instruct-85k \
+  --local-dir /home/ahmadhossein/Llama-3.2-400M-Instruct-85k
+```
+
+Keep the dataset compressed; the loader accepts `.json.gz`. These destinations
+match the checked-in base YAMLs:
+
+- Client `data_configs.dataset_kwargs.data_path`:
+  `/home/ahmadhossein/c4/en/c4-train.00000-of-01024.json.gz`.
+- Client `data_configs.dataset_kwargs.model_dir` and server
+  `client_configs.model_configs.model_kwargs.model_dir`:
+  `/home/ahmadhossein/Llama-3.2-400M-Instruct-85k`.
+
+On another machine, replace `/home/ahmadhossein` in the download commands with
+your storage directory and update the corresponding paths in `base_client.yaml`
+and `base_server.yaml`. If using `deployment_no_comp.json`, update
+`base_client_no_comp.yaml` and `base_server_no_comp.yaml` instead. Make the assets
+available at those paths on every host that uses them, or use shared storage.
+Download before submitting jobs to compute nodes without internet access;
+training loads the model locally. If Hugging Face reports an authentication or
+access error, run `hf auth login` with an account that has repository access and
+retry the download.
+
+### Optional: download the model with Git LFS
+
+Use this instead of the model's `hf download` command above. On Ubuntu/Debian,
+install Git LFS if needed (requires sudo), then initialize it and clone into a
+new destination directory:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y git-lfs
+git lfs install
+
+git clone https://huggingface.co/yosefw/Llama-3.2-400M-Instruct-85k \
+  /home/ahmadhossein/Llama-3.2-400M-Instruct-85k
+```
+
+Regular `git clone` fetches the large weights when Git LFS is installed and smudge
+is enabled. If you already cloned the repository with LFS downloads skipped,
+fetch the weights explicitly:
+
+```bash
+git -C /home/ahmadhossein/Llama-3.2-400M-Instruct-85k lfs pull
+```
+
+## Configuration preview
+
+Configuration excerpts follow; keep the remaining settings in the real files.
 Replace `/path/to/...` with existing paths on each host.
 
 `deployment.json` selects the base YAML files (paths relative to the JSON):
