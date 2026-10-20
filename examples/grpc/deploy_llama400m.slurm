@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #SBATCH --job-name=appfl-llama400m
-#SBATCH --nodes=1
+#SBATCH --nodes=3
 #SBATCH --ntasks=3
+#SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=8
 #SBATCH --gpus-per-task=1
 #SBATCH --mem=64G
@@ -24,44 +25,32 @@ if [[ $# -gt 0 && "$1" != --* ]]; then
     [[ "$deployment" = /* ]] || deployment="${SLURM_SUBMIT_DIR:-$repo_root}/$deployment"
     shift
 fi
-export PYTHON="${PYTHON:-python}"
+export APPFL_VENV="${APPFL_VENV:-$repo_root/appfl_venv_v2}"
+[[ "$APPFL_VENV" = /* ]] || APPFL_VENV="$repo_root/$APPFL_VENV"
 export PYTHONUNBUFFERED=1
-# Validate the server configuration and derive its client count and port.
-metadata="$(bash "$launcher" server --deployment "$deployment" "$@" --print-config | "$PYTHON" -c '
-import sys
-from omegaconf import OmegaConf
-c = OmegaConf.load(sys.stdin).server_configs
-g = c.comm_configs.grpc_configs
-if g.get("use_ssl", False):
-    raise SystemExit("This Slurm example expects use_ssl: false")
-print(c.num_clients, g.server_uri.rsplit(":", 1)[1])
-')"
-read -r num_clients port <<< "$metadata"
-tasks=$((num_clients + 1))
-if (( ${SLURM_NTASKS:-0} < tasks )); then
-    echo "Need at least $tasks tasks for $num_clients clients; allocated ${SLURM_NTASKS:-0}" >&2
+nodes="${SLURM_JOB_NUM_NODES:?Missing allocated node count}"
+if (( ${SLURM_NTASKS:-0} != nodes )); then
+    echo "Request exactly one task per node (--ntasks=$nodes --ntasks-per-node=1)" >&2
     exit 2
 fi
-# Build every client configuration before launching any ranks.
-for ((index=1; index<=num_clients; index++)); do
-    echo "Validating Client$index"
-    bash "$launcher" client --client-index "$index" --deployment "$deployment" "$@" --print-config | "$PYTHON" -c '
-import sys
-from omegaconf import OmegaConf
-config = OmegaConf.load(sys.stdin)
-if config.comm_configs.grpc_configs.get("use_ssl", False):
-    raise SystemExit("This Slurm example expects use_ssl: false on clients too")
-'
-done
+# srun reads this hostfile on the batch host. Each listed node receives one rank
+# in this exact order, making the first allocated node the dedicated server.
+hostfile="$(mktemp)"
+trap 'rm -f -- "$hostfile"' EXIT
+scontrol show hostnames "${SLURM_JOB_NODELIST:?Missing allocated node list}" > "$hostfile"
+mapfile -t allocated_hosts < "$hostfile"
+if (( ${#allocated_hosts[@]} != nodes )); then
+    echo "Allocated node list does not match node count" >&2
+    exit 2
+fi
+server_host="${allocated_hosts[0]}"
+export SLURM_HOSTFILE="$hostfile"
 logs="$repo_root/output/llama400m/slurm-$SLURM_JOB_ID"
-mkdir -p -- "$logs"
-# A unique directory prevents stale host discovery when restarting a job.
-rendezvous="$(mktemp -d "$logs/rendezvous.XXXXXX")"
-echo "Launching $tasks ranks: rank 0 server, ranks 1-$num_clients clients; logs: $logs"
-# One step gives each role a global SLURM_PROCID. Slurm handles node placement
-# and GPU isolation, and terminates peer ranks if any rank fails.
-exec srun --ntasks="$tasks" --cpus-per-task="${SLURM_CPUS_PER_TASK:-8}" \
+echo "Launching $nodes ranks; dedicated server: $server_host; per-node logs: $logs"
+# The hostfile assigns exactly one rank per node. The wrapper creates its logs
+# locally before redirecting output, so node-local storage is supported.
+srun --nodes="$nodes" --ntasks="$nodes" --distribution=arbitrary \
+    --cpus-per-task="${SLURM_CPUS_PER_TASK:-8}" \
     --gpus-per-task=1 --gpu-bind=single:1 --kill-on-bad-exit=1 \
-    --output="$logs/rank_%t.out" --error="$logs/rank_%t.err" \
     bash "$repo_root/examples/grpc/run_llama400m_rank.sh" \
-    "$repo_root/examples/grpc/train_llama400m.py" "$deployment" "$port" "$rendezvous" "$@"
+    "$launcher" "$deployment" "$server_host" "$logs" "$@"

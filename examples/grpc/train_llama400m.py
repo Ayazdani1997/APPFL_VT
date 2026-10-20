@@ -87,12 +87,15 @@ def load_deployment_config(path, role, client_index=None, cli=None):
     settings = json.loads(path.read_text())
     if not isinstance(settings, dict):
         raise ValueError("deployment JSON must be an object")
+    # Explicit CLI host/port must override a stored client URI too.
+    if cli and ("hostname" in cli or "port" in cli) and "server_uri" not in cli:
+        settings.pop("server_uri", None)
     settings.update(cli or {})
     unknown = set(settings) - DEPLOYMENT_KEYS
     if unknown:
         raise ValueError(f"unknown deployment keys: {', '.join(sorted(unknown))}")
     count = settings.get("num_clients", 2)
-    port = settings.get("port", 50051)
+    port = settings.get("port", 8888)
     for name, value in (("num_clients", count), ("port", port)):
         if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
             raise ValueError(f"{name} must be a positive integer")
@@ -129,7 +132,7 @@ def load_deployment_config(path, role, client_index=None, cli=None):
         host = f"[{host}]" if ":" in host and not host.startswith("[") else host
         return f"{host}:{port}"
     comm.grpc_configs.server_uri = (
-        endpoint(settings.get("bind_host", "0.0.0.0")) if is_server
+        endpoint(settings.get("bind_host", settings.get("hostname", "localhost"))) if is_server
         else settings.get("server_uri", endpoint(settings.get("hostname", "localhost")))
     )
     if "use_model_chunking" in settings:
@@ -237,8 +240,8 @@ def main() -> None:
     parser.add_argument("--deployment", type=Path, help="Deployment JSON; builds one role inline")
     parser.add_argument("--client-index", type=int, help="Client number, from 1 to num_clients")
     parser.add_argument("--num-clients", type=int)
-    parser.add_argument("--hostname", help="Server hostname clients connect to")
-    parser.add_argument("--port", type=int)
+    parser.add_argument("--hostname", help="Server hostname (default: localhost)")
+    parser.add_argument("--port", type=int, help="Server port (default: 8888)")
     parser.add_argument("--server-uri", help="Explicit client target, takes precedence over hostname/port")
     parser.add_argument("--bind-host", help="Server listening interface")
     parser.add_argument("--config", help="YAML configuration path")

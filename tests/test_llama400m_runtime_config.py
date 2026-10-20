@@ -68,7 +68,7 @@ def test_deployment_partitioning_and_server(tmp_path):
 def test_deployment_network_precedence_and_no_compression(tmp_path):
     path = deployment_file(tmp_path, server_uri="dns:///explicit:5000", enable_compression=False)
     client = launcher.load_deployment_config(path, "client", 1, dict(hostname="other", port=6000, error_bound=0.5))
-    assert client.comm_configs.grpc_configs.server_uri == "dns:///explicit:5000"
+    assert client.comm_configs.grpc_configs.server_uri == "other:6000"
     assert not client.comm_configs.compressor_configs.enable_compression
     assert "no_comp" in client.train_configs.logging_output_dirname
     server = launcher.load_deployment_config(path, "server", cli=dict(bind_host="::", port=6000))
@@ -88,8 +88,17 @@ def test_bash_launcher_preview_from_explicit_deployment(tmp_path):
     from omegaconf import OmegaConf
     script = ROOT / "examples/grpc/deploy_llama400m.sh"
     path = deployment_file(tmp_path)
+    # Provide an already prepared environment without installing over the network.
+    venv = tmp_path / "venv"
+    (venv / "bin").mkdir(parents=True)
+    import shlex
+    python_wrapper = venv / "bin/python"
+    python_wrapper.write_text(f'#!/bin/bash\nexec {shlex.quote(sys.executable)} "$@"\n')
+    python_wrapper.chmod(0o755)
+    (venv / "bin/activate").write_text("")
+    (venv / ".llama400m-ready").touch()
     for role, extra in [("server", []), ("client", ["--client-index", "3"])]:
-        result = subprocess.run(["bash", str(script), role, "--deployment", str(path), *extra, "--print-config"], cwd=tmp_path, env={**os.environ, "PYTHON": sys.executable}, text=True, capture_output=True, check=True)
+        result = subprocess.run(["bash", str(script), role, "--deployment", str(path), *extra, "--print-config"], cwd=tmp_path, env={**os.environ, "APPFL_VENV": str(venv)}, text=True, capture_output=True, check=True)
         config = OmegaConf.create(result.stdout)
         comm = config.server_configs.comm_configs if role == "server" else config.comm_configs
         assert comm.compressor_configs.error_bound == 0.003
@@ -116,3 +125,20 @@ def test_no_compression_deployment_has_no_compressor_settings(role, index):
     comm = config.server_configs.comm_configs if role == "server" else config.comm_configs
     assert "compressor_configs" not in comm
     assert "no_comp" in comm.comm_logging_output_dirname
+
+
+def test_deployment_default_and_cli_address(tmp_path):
+    import json
+    path = deployment_file(tmp_path)
+    values = json.loads(path.read_text())
+    for key in ("hostname", "port", "bind_host"):
+        values.pop(key)
+    path.write_text(json.dumps(values))
+    for role in ("server", "client"):
+        index = 1 if role == "client" else None
+        config = launcher.load_deployment_config(path, role, index)
+        comm = config.server_configs.comm_configs if role == "server" else config.comm_configs
+        assert comm.grpc_configs.server_uri == "localhost:8888"
+        config = launcher.load_deployment_config(path, role, index, dict(hostname="node01", port=9012))
+        comm = config.server_configs.comm_configs if role == "server" else config.comm_configs
+        assert comm.grpc_configs.server_uri == "node01:9012"

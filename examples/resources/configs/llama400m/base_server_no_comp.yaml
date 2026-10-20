@@ -44,7 +44,7 @@ server_configs:
   logging_output_filename: "server"
   comm_configs:
     grpc_configs:
-      server_uri: "localhost:50051"
+      server_uri: "localhost:8888"
       max_message_size: 4194304
       use_ssl: False
       use_model_chunking: True

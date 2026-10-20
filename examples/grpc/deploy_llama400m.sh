@@ -28,6 +28,10 @@ while [[ $# -gt 0 ]]; do
         *) args+=("$1"); shift ;;
     esac
 done
+export APPFL_VENV="${APPFL_VENV:-$repo_root/appfl_venv_v2}"
+[[ "$APPFL_VENV" = /* ]] || APPFL_VENV="$PWD/$APPFL_VENV"
+bash "$script_dir/setup_llama400m_env.sh"
+source "$APPFL_VENV/bin/activate"
 cd -- "$repo_root"
-exec "${PYTHON:-python}" "$script_dir/train_llama400m.py" "$role" \
+exec "$APPFL_VENV/bin/python" "$script_dir/train_llama400m.py" "$role" \
     --deployment "$deployment" "${args[@]}"
