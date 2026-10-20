@@ -74,6 +74,9 @@ class GRPCClientCommunicator:
         """
         self.client_id = client_id
         self.logger = logger
+        self.comm_logger = kwargs.get("comm_logger")
+        self._communication_round = 0
+        self._communication_totals = None
         self.max_message_size = max_message_size
         # Check for optimize_memory in kwargs (from grpc_configs), default to True
         self.optimize_memory = kwargs.get("optimize_memory", True)
@@ -296,6 +299,7 @@ class GRPCClientCommunicator:
             request_generator = self._send_request_with_model_optimized(
                 request, local_model_serialized, self.max_message_size
             )
+            request_generator = self._timed_request_iterator(request_generator)
 
             # Clear local model from memory after sending
             del local_model_serialized
@@ -326,10 +330,13 @@ class GRPCClientCommunicator:
                 local_model=local_model_serialized,
                 meta_data=meta_data,
             )
+            request_generator = self._timed_request_iterator(
+                proto_to_databuffer(request, max_message_size=self.max_message_size)
+            )
 
             byte_received = b""
             for byte_chunk in self.stub.UpdateGlobalModel(
-                proto_to_databuffer(request, max_message_size=self.max_message_size),
+                request_generator,
                 timeout=3600,
             ):
                 byte_received += byte_chunk.data_bytes
@@ -356,6 +363,53 @@ class GRPCClientCommunicator:
             "DONE" if response.header.status == ServerStatus.DONE else "RUNNING"
         )
         return model, meta_data
+
+    def _timed_request_iterator(self, request_iterator):
+        """Count outgoing DataBuffers and time consumption of one RPC's iterator."""
+        communication_start = time.perf_counter() if self.comm_logger else None
+        message_count = 0
+        for message in request_iterator:
+            message_count += 1
+            yield message
+        self._log_communication_time(communication_start, message_count)
+
+    def _log_communication_time(
+        self, communication_start: Optional[float], message_count: int
+    ) -> None:
+        """Accumulate iterator time within a chunked round, or log a single RPC."""
+        if self.comm_logger is None or communication_start is None:
+            return
+
+        communication_time = time.perf_counter() - communication_start
+        if self._communication_totals is not None:
+            self._communication_totals["time"] += communication_time
+            self._communication_totals["messages"] += message_count
+            self._communication_totals["requests"] += 1
+            return
+        self._write_communication_round(communication_time, message_count, 1)
+
+    def _write_communication_round(
+        self, communication_time: float, message_count: int, request_count: int
+    ) -> None:
+        """Write summed outgoing-iterator measurements for one aggregation round."""
+        if self.comm_logger is None:
+            return
+        if not self.comm_logger.titles:
+            self.comm_logger.log_title(
+                [
+                    "Communication Round", "Communication Time (s)",
+                    "DataBuffer Count", "Request Count",
+                ]
+            )
+        self.comm_logger.log_content(
+            {
+                "Communication Round": self._communication_round,
+                "Communication Time (s)": communication_time,
+                "DataBuffer Count": message_count,
+                "Request Count": request_count,
+            }
+        )
+        self._communication_round += 1
 
     def _streamed_get_global_model(
         self, first_chunk: Union[Dict, OrderedDict], first_meta: Dict, **kwargs
@@ -446,6 +500,7 @@ class GRPCClientCommunicator:
         # Temporarily disable chunking to avoid recursion
         old_use_chunking = self.use_model_chunking
         self.use_model_chunking = False
+        self._communication_totals = {"time": 0.0, "messages": 0, "requests": 0}
 
         try:
             # Incremental merging: build global_model progressively
@@ -495,11 +550,17 @@ class GRPCClientCommunicator:
                     "Chunked aggregation: Completed incremental merge of all chunks"
                 )
 
+            totals = self._communication_totals
+            if totals["requests"]:
+                self._write_communication_round(
+                    totals["time"], totals["messages"], totals["requests"]
+                )
             return global_model, final_metadata
 
         finally:
             # Restore chunking setting
             self.use_model_chunking = old_use_chunking
+            self._communication_totals = None
 
     def invoke_custom_action(self, action: str, **kwargs) -> Dict:
         """

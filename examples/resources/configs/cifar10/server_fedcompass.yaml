@@ -32,6 +32,11 @@ client_configs:
   model_configs:
     model_path: "./resources/model/resnet.py"
     model_name: "ResNet18"
+    # num_channel: 3
+    # model_kwargs:
+    #   num_channel: 3
+    #   num_classes: 10
+    #   num_pixel: 32
 
   comm_configs:
     compressor_configs:

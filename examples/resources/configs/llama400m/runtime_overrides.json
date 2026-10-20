@@ -1,0 +1,6 @@
+{
+  "error_bound": 0.0001,
+  "max_message_size": 4194304,
+  "model_chunk_size": 4194304,
+  "log_dir": "./output/llama400m"
+}

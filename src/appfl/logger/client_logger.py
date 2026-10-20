@@ -6,9 +6,10 @@ from .utils import LevelFilter
 from datetime import datetime
 from colorama import Fore, Style
 from typing import List, Dict, Union
+from .csv_logger import CSVLoggerMixin
 
 
-class ClientAgentFileLogger:
+class ClientAgentFileLogger(CSVLoggerMixin):
     """
     ClientAgentFileLogger is a class that logs FL client-side messages to the console and to a file.
     :param logging_id: An optional string to identify the client.
@@ -28,6 +29,13 @@ class ClientAgentFileLogger:
         if file_name != "":
             file_name += f"_{logging_id}" if logging_id != "" else ""
             file_name += f"_{experiment_id if experiment_id != '' else datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}"
+
+        csv_filepath = (
+            os.path.join(file_dir, f"{file_name}.csv")
+            if file_dir != "" and file_name != ""
+            else None
+        )
+        self._init_csv_logger(csv_filepath)
 
         self.logger = logging.getLogger(
             __name__ + "_" + logging_id if logging_id != "" else str(uuid.uuid4())
@@ -121,25 +129,15 @@ class ClientAgentFileLogger:
                 self.info(f"Logging to {real_file_name}")
 
     def log_title(self, titles: List) -> None:
-        self.titles = titles
+        self.titles = list(titles)
         title = " ".join(["%10s" % t for t in titles])
         self.info(title)
 
     def set_title(self, titles: List) -> None:
-        if not hasattr(self, "titles"):
-            self.titles = titles
+        super().set_title(titles)
 
     def log_content(self, contents: Union[Dict, List]) -> None:
-        if not isinstance(contents, dict) and not isinstance(contents, list):
-            raise ValueError("Contents must be a dictionary or list")
-        if not isinstance(contents, list):
-            for key in contents.keys():
-                if key not in self.titles:
-                    raise ValueError(f"Title {key} is not defined")
-            contents = [contents.get(key, "") for key in self.titles]
-        else:
-            if len(contents) != len(self.titles):
-                raise ValueError("Contents and titles must have the same length")
+        contents = self._normalize_content(contents)
         length = [max(len(str(t)), 10) for t in self.titles]
         content = " ".join(
             [
@@ -148,6 +146,7 @@ class ClientAgentFileLogger:
             ]
         )
         self.info(content)
+        self._write_csv_row(contents)
 
     def info(self, info: str) -> None:
         self.logger.info(info)

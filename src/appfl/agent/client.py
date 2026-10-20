@@ -8,6 +8,8 @@ import warnings
 import importlib
 import torch.nn as nn
 from datetime import datetime
+from time import perf_counter
+from appfl.misc.timing import collect_latencies
 from appfl.config import ClientAgentConfig
 from appfl.algorithm.trainer import BaseTrainer
 from omegaconf import DictConfig, OmegaConf
@@ -72,6 +74,13 @@ class ClientAgent:
         self, client_agent_config: ClientAgentConfig = ClientAgentConfig(), **kwargs
     ) -> None:
         self.client_agent_config = client_agent_config
+        if "compression_logger" in kwargs:
+            print(">>>>>>>>>>>>>>> Compression logger enabled")
+            self.compression_logger = kwargs["compression_logger"]
+
+        if "comm_logger" in kwargs:
+            print(">>>>>>>>>>>>>>> Comm logger enabled")
+            self.comm_logger = kwargs["comm_logger"]
         # Check for optimize_memory in client_agent_config, default to True
         self.optimize_memory = getattr(client_agent_config, "optimize_memory", True)
         self._create_logger()
@@ -139,7 +148,33 @@ class ClientAgent:
         else:
             metadata = None
         if self.enable_compression:
-            params = self.compressor.compress_model(params)
+            parameters_before_compression = self._get_parameter_size(params)
+            compression_logger = getattr(self, "compression_logger", None)
+            with collect_latencies(enabled=compression_logger is not None) as timing:
+                compression_start = perf_counter()
+                params = self.compressor.compress_model(params)
+                compression_time = perf_counter() - compression_start
+            parameters_after_compression = self._get_parameter_size(params)
+            if hasattr(self, "compression_logger"):
+                if not self.compression_logger.titles:
+                    self.compression_logger.log_title(
+                        [
+                            "Round",
+                            "Compression Time (s)",
+                            "Parameters Before Compression (bytes)",
+                            "Parameters After Compression (bytes)",
+                            *timing.total_seconds
+                        ]
+                    )
+                self.compression_logger.log_content(
+                    {
+                        "Round": max(self.trainer.round - 1, 0),
+                        "Compression Time (s)": compression_time,
+                        "Parameters Before Compression (bytes)": parameters_before_compression,
+                        "Parameters After Compression (bytes)": parameters_after_compression,
+                        **timing.total_seconds,
+                    }
+                )
             # Memory optimization: Garbage collection after compression
             if self.optimize_memory:
                 gc.collect()
@@ -149,6 +184,23 @@ class ClientAgent:
             gc.collect()
 
         return params if metadata is None else (params, metadata)
+
+    @staticmethod
+    def _get_parameter_size(params) -> int:
+        """Return the in-memory payload size of model parameters in bytes."""
+        if isinstance(params, torch.Tensor):
+            return params.numel() * params.element_size()
+        if isinstance(params, (bytes, bytearray, memoryview)):
+            return len(params)
+        if isinstance(params, dict):
+            return sum(
+                ClientAgent._get_parameter_size(value) for value in params.values()
+            )
+        if isinstance(params, (list, tuple)):
+            return sum(ClientAgent._get_parameter_size(value) for value in params)
+        if hasattr(params, "nbytes"):
+            return int(params.nbytes)
+        return 0
 
     def load_parameters(self, params) -> None:
         """Load parameters from the server."""
@@ -422,6 +474,9 @@ class ClientAgent:
                 ),
             )
         else:
+            print(f"self.client_agent_config.data_configs.dataset_path = {self.client_agent_config.data_configs.dataset_path}")
+            print(f"self.client_agent_config.data_configs.dataset_name = {self.client_agent_config.data_configs.dataset_name}")
+
             self.train_dataset, self.val_dataset = run_function_from_file(
                 self.client_agent_config.data_configs.dataset_path,
                 self.client_agent_config.data_configs.dataset_name,

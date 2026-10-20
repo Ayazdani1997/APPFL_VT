@@ -2,12 +2,13 @@ import os
 import pathlib
 import logging
 from .utils import LevelFilter
-from typing import Optional
+from typing import Dict, List, Optional, Union
 from datetime import datetime
 from colorama import Fore, Style
+from .csv_logger import CSVLoggerMixin
 
 
-class ServerAgentFileLogger:
+class ServerAgentFileLogger(CSVLoggerMixin):
     """
     ServerAgentFileLogger is a class that logs FL server-side messages to the console and to a file.
     :param file_dir: The directory to save the log file.
@@ -21,6 +22,13 @@ class ServerAgentFileLogger:
     ) -> None:
         if file_name != "":
             file_name += f"_Server_{experiment_id if experiment_id != '' else datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}"
+
+        csv_filepath = (
+            os.path.join(file_dir, f"{file_name}.csv")
+            if file_dir != "" and file_name != ""
+            else None
+        )
+        self._init_csv_logger(csv_filepath)
 
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(logging.DEBUG)
@@ -96,6 +104,28 @@ class ServerAgentFileLogger:
 
     def warning(self, warning: str) -> None:
         self.logger.warning(warning)
+
+    def log_title(self, titles: List) -> None:
+        self.titles = list(titles)
+        title = " ".join(["%10s" % item for item in titles])
+        self.info(title)
+
+    def set_title(self, titles: List) -> None:
+        super().set_title(titles)
+
+    def log_content(self, contents: Union[Dict, List]) -> None:
+        contents = self._normalize_content(contents)
+        length = [max(len(str(title)), 10) for title in self.titles]
+        content = " ".join(
+            [
+                "%*s" % (ln, value)
+                if not isinstance(value, float)
+                else "%*.4f" % (ln, value)
+                for ln, value in zip(length, contents)
+            ]
+        )
+        self.info(content)
+        self._write_csv_row(contents)
 
     def get_log_filepath(self) -> Optional[str]:
         if hasattr(self, "log_filepath"):

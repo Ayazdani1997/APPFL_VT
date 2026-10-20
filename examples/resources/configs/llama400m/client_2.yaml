@@ -1,0 +1,38 @@
+client_id: "Client2"
+train_configs:
+  device: "cuda"
+  logging_output_dirname: "./output/llama400m/train_compress_0.0001_client_2_4m_chunk"
+  logging_output_filename: "client_2"
+  optimize_memory: False
+data_configs:
+  dataset_path: "./examples/resources/dataset/llama400m_dataset.py"
+  dataset_name: "get_llama400m_dataset"
+  dataset_kwargs:
+    data_path: "/home/ahmadhossein/c4/en/c4-train.00000-of-01024.json.gz"
+    model_dir: "/home/ahmadhossein/Llama-3.2-400M-Instruct-85k"
+    num_clients: 2
+    client_id: 1
+    sequence_length: 256
+    text_field: "text"
+    # Set this to cap startup time and memory for systems experiments.
+    max_documents: 1000
+    validation_fraction: 0.0
+comm_configs:
+  grpc_configs:
+    server_uri: "localhost:50051"
+    max_message_size: 4194304
+    use_ssl: False
+    use_model_chunking: True
+    model_chunk_size: 4194304
+  compressor_configs:
+    enable_compression: True
+    # Used if enable_compression is True
+    lossy_compressor:  "SZ2Compressor"
+    lossless_compressor: "blosc"
+    error_bounding_mode: "REL"
+    error_bound: 1e-10
+    param_cutoff: 1024
+    compression_logging_output_dirname: "./output/llama400m/compress_0.0001_client_2_4m_chunk"
+    compression_logging_output_filename: "compression_result"
+  comm_logging_output_dirname: "./output/llama400m/comm_0.1_client_2_4m_chunk"
+  comm_logging_output_filename: "comm_result"

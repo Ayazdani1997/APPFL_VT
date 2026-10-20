@@ -5,6 +5,7 @@ Python API for SZ2/SZ3
 import sys
 import ctypes
 import numpy as np
+from appfl.misc.timing import measure_latency
 
 
 class SZ:
@@ -100,20 +101,23 @@ class SZ:
         self.sz.SZ_decompress.restype = ctypes.POINTER(
             ctypes.c_float if original_dtype == np.float32 else ctypes.c_double
         )
-        data_dec_c = self.sz.SZ_decompress(
-            ori_type,
-            data_cmpr.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte)),
-            data_cmpr.size,
-            r5,
-            r4,
-            r3,
-            r2,
-            r1,
-        )
+        with measure_latency("C tensor decompress (s)"):
+            data_dec_c = self.sz.SZ_decompress(
+                ori_type,
+                data_cmpr.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte)),
+                data_cmpr.size,
+                r5,
+                r4,
+                r3,
+                r2,
+                r1,
+            )
 
-        data_dec = np.array(data_dec_c[: np.prod(original_shape)]).reshape(
-            original_shape
-        )
+        
+        with measure_latency("C Tensor Copy Time (s)"):
+            data_dec = np.array(data_dec_c[: np.prod(original_shape)]).reshape(
+                original_shape
+            )
         self.libc.free(data_dec_c)
         return data_dec
 
@@ -132,23 +136,24 @@ class SZ:
         cmpr_size = ctypes.c_size_t()
         r5, r4, r3, r2, r1 = [0] * (5 - len(data.shape)) + list(data.shape)
         datatype, datap = self.__sz_datatype(data.dtype, data)
-        data_cmpr_c = self.sz.SZ_compress_args(
-            datatype,
-            datap,
-            ctypes.byref(cmpr_size),
-            eb_mode,
-            eb_abs,
-            eb_rel,
-            eb_pwr,
-            r5,
-            r4,
-            r3,
-            r2,
-            r1,
-        )
+        with measure_latency("C tensor compress (s)"):
+            data_cmpr_c = self.sz.SZ_compress_args(
+                datatype,
+                datap,
+                ctypes.byref(cmpr_size),
+                eb_mode,
+                eb_abs,
+                eb_rel,
+                eb_pwr,
+                r5,
+                r4,
+                r3,
+                r2,
+                r1,
+            )
 
         cmpr_ratio = data.size * data.itemsize / cmpr_size.value
-
-        data_cmpr = np.array(data_cmpr_c[: cmpr_size.value], dtype=np.uint8)
+        with measure_latency("C Tensor Copy Time (s)"):
+            data_cmpr = np.array(data_cmpr_c[: cmpr_size.value], dtype=np.uint8)
         self.libc.free(data_cmpr_c)
         return data_cmpr, cmpr_ratio

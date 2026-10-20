@@ -13,12 +13,19 @@ data_configs:
   dataset_kwargs:
     num_clients: 2
     client_id: 0
-    partition_strategy: "class_noniid"
+    partition_strategy: "iid"
     visualization: True
     output_dirname: "./output"
     output_filename: "visualization.pdf"
 
 comm_configs:
+  compressor_configs:
+    enable_compression: True
+    lossy_compressor: "SZ2Compressor"
+    lossless_compressor: "blosc"
+    error_bounding_mode: "REL"
+    error_bound: 1e-3
+    param_cutoff: 1024
   grpc_configs:
     server_uri: localhost:50051
     max_message_size: 1048576

@@ -15,6 +15,7 @@ from omegaconf import DictConfig
 from collections import OrderedDict
 from typing import Tuple, Union, List
 from .base_compressor import BaseCompressor
+from appfl.misc.timing import measure_latency
 
 
 class SZ2Compressor(BaseCompressor):
@@ -43,10 +44,22 @@ class SZ2Compressor(BaseCompressor):
         self.compressor_lib_path = ""
         self.param_count_threshold = compressor_config.param_cutoff
         ext = ".dylib" if sys.platform.startswith("darwin") else ".so"
-        self.compressor_lib_path = (
-            os.path.join(pathlib.Path.home(), ".appfl/.compressor/SZ/build/sz/libSZ")
-            + ext
-        )
+        sz2_home = os.environ.get("SZ2_HOME")
+
+        if sz2_home:
+            self.compressor_lib_path = os.path.join(
+                sz2_home,
+                "lib",
+                "libSZ" + ext,
+            )
+        else:
+            self.compressor_lib_path = (
+                os.path.join(
+                    pathlib.Path.home(),
+                    ".appfl/.compressor/SZ/build/sz/libSZ",
+                )
+                + ext
+            )
 
     def compress_model(
         self,
@@ -94,7 +107,7 @@ class SZ2Compressor(BaseCompressor):
         self,
         compressed_model: bytes,
         model: Union[dict, OrderedDict],
-        batched: bool = False,
+        batched: bool = False
     ) -> Union[OrderedDict, dict, List[Union[OrderedDict, dict]]]:
         """
         Decompress all the communicated model parameters. The local model can be batched as a list.
@@ -230,37 +243,44 @@ class SZ2Compressor(BaseCompressor):
         decompressed_weights = OrderedDict()
         for name, param in model.state_dict().items():
             if "weight" in name and param.numel() > self.param_count_threshold:
-                compressed_weights[name] = self._decompress(
-                    cmp_data=compressed_weights[name],
-                    ori_shape=(param.numel(),),
-                    ori_dtype=np.float32,
-                ).astype(np.float32)
+                # print(f">>> YESS Weight in name = {name}")
+                with measure_latency("tensor decompress (s)"):
+                    compressed_weights[name] = self._decompress(
+                        cmp_data=compressed_weights[name],
+                        ori_shape=(param.numel(),),
+                        ori_dtype=np.float32,
+                    ).astype(np.float32)
             else:
-                if self.lossless_compressor == "zstd":
-                    compressed_weights[name] = zstd.decompress(compressed_weights[name])
-                elif self.lossless_compressor == "gzip":
-                    compressed_weights[name] = gzip.decompress(compressed_weights[name])
-                elif self.lossless_compressor == "zlib":
-                    compressed_weights[name] = zlib.decompress(compressed_weights[name])
-                elif self.lossless_compressor == "blosc":
-                    compressed_weights[name] = blosc.decompress(
-                        compressed_weights[name], as_bytearray=True
+                # print(f">>> NOOOO Weight not in name = {name}")
+                with measure_latency("tensor decompress (s)"):
+                    if self.lossless_compressor == "zstd":
+                        compressed_weights[name] = zstd.decompress(compressed_weights[name])
+                    elif self.lossless_compressor == "gzip":
+                        compressed_weights[name] = gzip.decompress(compressed_weights[name])
+                    elif self.lossless_compressor == "zlib":
+                        compressed_weights[name] = zlib.decompress(compressed_weights[name])
+                    elif self.lossless_compressor == "blosc":
+                        compressed_weights[name] = blosc.decompress(
+                            compressed_weights[name], as_bytearray=True
+                        )
+                    elif self.lossless_compressor == "lzma":
+                        compressed_weights[name] = lzma.decompress(compressed_weights[name])
+                    else:
+                        raise NotImplementedError
+                with measure_latency("Tensor Copy Time (s)"):
+                    compressed_weights[name] = np.frombuffer(
+                        compressed_weights[name], dtype=np.float32
                     )
-                elif self.lossless_compressor == "lzma":
-                    compressed_weights[name] = lzma.decompress(compressed_weights[name])
-                else:
-                    raise NotImplementedError
-                compressed_weights[name] = np.frombuffer(
-                    compressed_weights[name], dtype=np.float32
-                )
             if param.shape == torch.Size([]):
-                copy_arr = deepcopy(compressed_weights[name])
-                copy_tensor = torch.from_numpy(copy_arr)
-                decompressed_weights[name] = torch.tensor(copy_tensor)
+                with measure_latency("Tensor Copy Time (s)"):
+                    copy_arr = deepcopy(compressed_weights[name])
+                    copy_tensor = torch.from_numpy(copy_arr)
+                    decompressed_weights[name] = torch.tensor(copy_tensor)
             else:
-                copy_arr = deepcopy(compressed_weights[name])
-                copy_tensor = torch.from_numpy(copy_arr)
-                decompressed_weights[name] = copy_tensor.reshape(param.shape)
+                with measure_latency("Tensor Copy Time (s)"):
+                    copy_arr = deepcopy(compressed_weights[name])
+                    copy_tensor = torch.from_numpy(copy_arr)
+                    decompressed_weights[name] = copy_tensor.reshape(param.shape)
         return decompressed_weights
 
     def _decompress(

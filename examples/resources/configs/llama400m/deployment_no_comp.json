@@ -1,0 +1,13 @@
+{
+  "max_message_size": 134217728,
+  "model_chunk_size": 67108864,
+  "log_dir": "./output/llama400m/no_comp_4m_no_chunking",
+  "num_clients": 2,
+  "hostname": "localhost",
+  "port": 50051,
+  "bind_host": "0.0.0.0",
+  "base_client": "base_client_no_comp.yaml",
+  "base_server": "base_server_no_comp.yaml",
+  "enable_compression": false,
+  "use_model_chunking": false
+}

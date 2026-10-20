@@ -191,9 +191,20 @@ class VanillaTrainer(BaseTrainer):
                 val_loss, val_accuracy = self._validate()
                 self.val_results["pre_val_loss"] = val_loss
                 self.val_results["pre_val_accuracy"] = val_accuracy
-                content = [self.round, "Y", " ", " ", " ", val_loss, val_accuracy]
+
+                content = {
+                    "Round": self.round,
+                    "Pre Val?": "Y",
+                    "Time": "",
+                    "Train Loss": "",
+                    "Train Accuracy": "",
+                    "Val Loss": val_loss,
+                    "Val Accuracy": val_accuracy,
+                }
+
                 if self.train_configs.mode == "epoch":
-                    content.insert(1, 0)
+                    content["Epoch"] = 0
+
                 self.logger.log_content(content)
                 if self.enabled_wandb:
                     wandb.log(
@@ -261,32 +272,22 @@ class VanillaTrainer(BaseTrainer):
                             f"{self.wandb_logging_id}/val-accuracy (during train)": val_accuracy,
                         }
                     )
-                self.logger.log_content(
-                    [self.round, epoch, per_epoch_time, train_loss, train_accuracy]
-                    if (not do_validation) and (not do_pre_validation)
-                    else (
-                        [
-                            self.round,
-                            epoch,
-                            per_epoch_time,
-                            train_loss,
-                            train_accuracy,
-                            val_loss,
-                            val_accuracy,
-                        ]
-                        if not do_pre_validation
-                        else [
-                            self.round,
-                            epoch,
-                            "N",
-                            per_epoch_time,
-                            train_loss,
-                            train_accuracy,
-                            val_loss,
-                            val_accuracy,
-                        ]
-                    )
-                )
+                content = {
+                    "Round": self.round,
+                    "Epoch": epoch,
+                    "Time": per_epoch_time,
+                    "Train Loss": train_loss,
+                    "Train Accuracy": train_accuracy,
+                }
+
+                if do_pre_validation:
+                    content["Pre Val?"] = "N"
+
+                if do_validation or do_pre_validation:
+                    content["Val Loss"] = val_loss
+                    content["Val Accuracy"] = val_accuracy
+
+                self.logger.log_content(content)
         else:
             self.val_results["current_local_steps"] = self.train_configs.num_local_steps
             start_time = time.time()
@@ -350,30 +351,21 @@ class VanillaTrainer(BaseTrainer):
                         f"{self.wandb_logging_id}/val-accuracy (during train)": val_accuracy,
                     }
                 )
-            self.logger.log_content(
-                [self.round, per_step_time, train_loss, train_accuracy]
-                if (not do_validation) and (not do_pre_validation)
-                else (
-                    [
-                        self.round,
-                        per_step_time,
-                        train_loss,
-                        train_accuracy,
-                        val_loss,
-                        val_accuracy,
-                    ]
-                    if not do_pre_validation
-                    else [
-                        self.round,
-                        "N",
-                        per_step_time,
-                        train_loss,
-                        train_accuracy,
-                        val_loss,
-                        val_accuracy,
-                    ]
-                )
-            )
+            content = {
+                "Round": self.round,
+                "Time": per_step_time,
+                "Train Loss": train_loss,
+                "Train Accuracy": train_accuracy,
+            }
+
+            if do_pre_validation:
+                content["Pre Val?"] = "N"
+
+            if do_validation or do_pre_validation:
+                content["Val Loss"] = val_loss
+                content["Val Accuracy"] = val_accuracy
+
+            self.logger.log_content(content)
 
         # --- Log DP budget ---
         if (

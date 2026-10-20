@@ -1,0 +1,28 @@
+client_id: "Client1"
+train_configs:
+  device: "cuda"
+  logging_output_dirname: "./output/llama400m/base"
+  logging_output_filename: "client_1"
+  optimize_memory: False
+data_configs:
+  dataset_path: "./examples/resources/dataset/llama400m_dataset.py"
+  dataset_name: "get_llama400m_dataset"
+  dataset_kwargs:
+    data_path: "/home/ahmadhossein/c4/en/c4-train.00000-of-01024.json.gz"
+    model_dir: "/home/ahmadhossein/Llama-3.2-400M-Instruct-85k"
+    num_clients: 2
+    client_id: 0
+    sequence_length: 256
+    text_field: "text"
+    # Set this to cap startup time and memory for systems experiments.
+    max_documents: 1000
+    validation_fraction: 0.0
+comm_configs:
+  grpc_configs:
+    server_uri: "localhost:50051"
+    max_message_size: 4194304
+    use_ssl: False
+    use_model_chunking: True
+    model_chunk_size: 4194304
+  comm_logging_output_dirname: "./output/llama400m/base"
+  comm_logging_output_filename: "comm_result"

@@ -38,6 +38,8 @@ APPFL, Advanced Privacy-Preserving Federated Learning, is an open-source and hig
 
 [Documentation](http://appfl.rtfd.io/): please check out our documentation for tutorials, users guide, and developers guide.
 
+To test federated Llama-400M training with gRPC, see the [Llama-400M execution guide](examples/grpc/README_llama400m.md), including configuration previews, separate-terminal launches, and Slurm/srun deployment.
+
 ## Table of Contents
 
 * [Installation](#hammer_and_wrench-installation)

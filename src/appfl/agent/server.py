@@ -7,6 +7,8 @@ import warnings
 import threading
 import numpy as np
 import torch.nn as nn
+from time import perf_counter
+from appfl.misc.timing import collect_latencies
 from appfl.config import ServerAgentConfig
 from appfl.logger import ServerAgentFileLogger
 from appfl.algorithm.scheduler import BaseScheduler
@@ -41,9 +43,14 @@ class ServerAgent:
     """
 
     def __init__(
-        self, server_agent_config: ServerAgentConfig = ServerAgentConfig()
+        self, server_agent_config: ServerAgentConfig = ServerAgentConfig(), **kwargs
     ) -> None:
         self.server_agent_config = server_agent_config
+        if "compression_logger" in kwargs:
+            self.compression_logger = kwargs["compression_logger"]
+        
+        if "comm_logger" in kwargs:
+            self.comm_logger = kwargs["comm_logger"]
         # Check for optimize_memory in server_configs, default to True
         self.optimize_memory = getattr(
             server_agent_config.server_configs, "optimize_memory", True
@@ -497,6 +504,7 @@ class ServerAgent:
 
     def _bytes_to_model(self, model_bytes: bytes) -> Union[Dict, OrderedDict]:
         """Deserialize the model from bytes."""
+        print(f">>>>>>>>>>>>> Server-side enable_compression = {self.enable_compression}")
         if not self.enable_compression:
             # Memory optimization: Use context manager and load to CPU first
             if self.optimize_memory:
@@ -511,7 +519,23 @@ class ServerAgent:
                 raise ValueError(
                     "Model is not provided to the server, so you cannot use compression."
                 )
-            model = self.compressor.decompress_model(model_bytes, self.model)
+            decompression_start = perf_counter()
+            compression_logger = getattr(self, "compression_logger", None)
+            with collect_latencies(enabled=compression_logger is not None) as timing:
+                model = self.compressor.decompress_model(model_bytes, self.model)
+            decompression_time = perf_counter() - decompression_start
+            if compression_logger is not None:
+                if not self.compression_logger.titles:
+                    self.compression_logger.log_title(
+                        ["Round", "Total Decompression Time (s)", *timing.total_seconds]
+                    )
+                self.compression_logger.log_content(
+                    {
+                        "Round": self.scheduler.get_num_global_epochs(),
+                        "Total Decompression Time (s)": decompression_time,
+                        **timing.total_seconds,
+                    }
+                )
             # Memory optimization: Garbage collection after decompression
             if self.optimize_memory:
                 gc.collect()

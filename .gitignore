@@ -1,6 +1,7 @@
 logs
 data
 examples/resources/configs/gwas/sites-data
+appfl_venv_v2/
 examples/memory_profiles
 funnel.db
 **/CLAUDE.md
