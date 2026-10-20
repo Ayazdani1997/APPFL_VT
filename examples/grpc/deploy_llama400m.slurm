@@ -12,6 +12,12 @@
 
 # Submit from the APPFL root. Rank 0 is the server; rank K is ClientK.
 set -euo pipefail
+# Load cluster modules here before environment setup or srun. Uncomment and
+# replace these placeholders with names/versions listed by `module avail`.
+# module load cuda/YOUR_CUDA_VERSION
+# module load openmpi/YOUR_MPI_VERSION
+# module load python/YOUR_PYTHON_VERSION
+# Choose MPI compatible with mpi4py and CUDA compatible with installed PyTorch.
 : "${SLURM_JOB_ID:?Submit with sbatch or run inside a Slurm allocation}"
 repo_root="${APPFL_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 cd -- "$repo_root"
@@ -25,8 +31,8 @@ if [[ $# -gt 0 && "$1" != --* ]]; then
     [[ "$deployment" = /* ]] || deployment="${SLURM_SUBMIT_DIR:-$repo_root}/$deployment"
     shift
 fi
-export APPFL_VENV="${APPFL_VENV:-$repo_root/appfl_venv_v2}"
-[[ "$APPFL_VENV" = /* ]] || APPFL_VENV="$repo_root/$APPFL_VENV"
+export APPFL_VENV_ROOT="${APPFL_VENV_ROOT:-$repo_root/appfl_venv_v2}"
+[[ "$APPFL_VENV_ROOT" = /* ]] || APPFL_VENV_ROOT="$repo_root/$APPFL_VENV_ROOT"
 export PYTHONUNBUFFERED=1
 nodes="${SLURM_JOB_NUM_NODES:?Missing allocated node count}"
 if (( ${SLURM_NTASKS:-0} != nodes )); then

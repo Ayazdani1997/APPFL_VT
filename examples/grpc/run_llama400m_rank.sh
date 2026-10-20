@@ -25,13 +25,17 @@ mkdir -p -- "$logs"
 exec >"$logs/rank_${rank}.out" 2>"$logs/rank_${rank}.err"
 echo "Rank $rank on $(hostname); server: $server_host"
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-# Require an existing environment on this node before installing dependencies.
-: "${APPFL_VENV:?Missing environment path}"
-if [[ ! -x "$APPFL_VENV/bin/python" || ! -f "$APPFL_VENV/bin/activate" ]]; then
-    echo "Missing Python environment on $(hostname): $APPFL_VENV" >&2
-    echo "Create it on this node with: APPFL_VENV=\"$APPFL_VENV\" bash \"$script_dir/setup_llama400m_env.sh\"" >&2
+# Isolate environments by node, including when the parent directory is shared.
+repo_root="$(cd -- "$script_dir/../.." && pwd)"
+venv_root="${APPFL_VENV_ROOT:-$repo_root/appfl_venv_v2}"
+[[ "$venv_root" = /* ]] || venv_root="$PWD/$venv_root"
+node_name="${SLURMD_NODENAME:-$(hostname)}"
+if [[ ! "$node_name" =~ ^[a-zA-Z0-9_.-]+$ || "$node_name" == . || "$node_name" == .. ]]; then
+    echo "Invalid node name for environment path: $node_name" >&2
     exit 2
 fi
+export APPFL_VENV="$venv_root/$node_name"
+echo "Preparing node environment: $APPFL_VENV"
 bash "$script_dir/setup_llama400m_env.sh"
 # Activate this node's environment before clients use Python for readiness.
 source "${APPFL_VENV:?Missing environment path}/bin/activate"

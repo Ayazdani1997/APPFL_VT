@@ -185,8 +185,11 @@ be supplied as a trailing `--port PORT` after the deployment path.
 For automatic client readiness checks without Slurm, call
 `run_llama400m_rank.sh LAUNCHER DEPLOYMENT SERVER_HOST LOG_DIR [training flags]`
 once per process. Set `APPFL_RANK=0` for the server or `APPFL_RANK=K` for ClientK,
-`APPFL_WORLD_SIZE=num_clients+1`, and `APPFL_VENV` to an existing environment's
-absolute path. The wrapper exits if that environment is missing. Pass `--port`
+`APPFL_WORLD_SIZE=num_clients+1`, and optionally `APPFL_VENV_ROOT` to the parent
+directory for node environments. The wrapper automatically creates and installs
+`APPFL_VENV_ROOT/NODE_NAME` (default `APPFL/appfl_venv_v2/NODE_NAME`), reusing it
+for ranks on the same node. Package-index access and Python with `venv` support
+are required for installation. Pass `--port`
 to change its default of 8888. See the
 [complete non-Slurm setup and launch example](../../../grpc/README_llama400m.md#use-the-rank-wrapper-without-slurm)
 for per-host commands, logging, readiness, and GPU assignment.

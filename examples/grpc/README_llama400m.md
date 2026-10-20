@@ -175,18 +175,19 @@ bash run_llama400m_rank.sh LAUNCHER DEPLOYMENT SERVER_HOST LOG_DIR [training fla
 ```
 
 Set `APPFL_RANK` (0 for server, K for ClientK), `APPFL_WORLD_SIZE`
-(`num_clients + 1`), and `APPFL_VENV` (absolute environment path on that host).
+(`num_clients + 1`). Optionally set `APPFL_VENV_ROOT` to the parent directory
+for node environments.
 These rank variables take precedence over `SLURM_PROCID` and `SLURM_NTASKS`.
-An existing environment is required: run `setup_llama400m_env.sh` explicitly
-on each host first. A missing environment makes the wrapper exit with status 2.
-The wrapper installs any pending dependencies, activates the environment,
+The wrapper automatically creates `APPFL_VENV_ROOT/NODE_NAME` if missing
+(default: `APPFL/appfl_venv_v2/NODE_NAME`). Nodes use separate environments even
+on shared storage; ranks on the same node reuse one environment under a setup
+lock. The wrapper sets `APPFL_VENV` to that node-specific path, installs dependencies, activates the environment,
 validates configuration, and calls `deploy_llama400m.sh`.
 
-For two clients, run the following setup on **each host**, from its APPFL root:
+For two clients, set these variables on **each host**, from its APPFL root:
 
 ```bash
-export APPFL_VENV="$PWD/appfl_venv_v2"
-bash examples/grpc/setup_llama400m_env.sh
+export APPFL_VENV_ROOT="$PWD/appfl_venv_v2"
 launcher="$PWD/examples/grpc/deploy_llama400m.sh"
 deployment="$PWD/examples/resources/configs/llama400m/deployment.json"
 logs="$PWD/output/llama400m/manual-run"
@@ -237,21 +238,20 @@ The CPU server also reserves a GPU to keep task resource requests uniform.
 Adjust CPUs, memory, GPUs, time, partition, and account for your cluster. The
 example expects Slurm GPU resources and unencrypted gRPC (`use_ssl: false`).
 
-Load your site's MPI/CUDA modules before submission. The batch script calls only
-the rank wrapper through a single `srun`; it performs no Python setup or preflight
-on the batch host. Each wrapper exits with status 2 if the environment Python or
-activation script is missing on its node. Create the environment explicitly with
-`setup_llama400m_env.sh` on each node (or once on shared storage) before submission.
-For an existing environment, the wrapper installs dependencies before using Python;
-a shared environment reuses the completed installation under the setup lock.
-Each training rank activates its node's environment and executes the launcher.
-The checkout, model, dataset, and JSON must be accessible at the configured paths
-on all nodes. Output directories may be node-local: each wrapper creates its log
-directory on its own node before redirecting stdout/stderr. `APPFL_VENV` may
-point to the same absolute node-local path on each node (for example,
-`/tmp/your-user/appfl_venv_v2`) or to shared storage. Nodes needing installation
-require package-index access and a bootstrap Python with venv support. Preparing
-only a login-node environment does not prepare node-local environments elsewhere.
+Before submission, **update the module-loading section in
+`examples/grpc/deploy_llama400m.slurm`** for your cluster. Uncomment the example
+`module load` lines and replace the CUDA, MPI, and optional Python placeholders
+with names/versions listed by `module avail`. Keep these lines before environment
+setup and `srun` so ranks inherit the module environment. Choose MPI compatible
+with `mpi4py` and CUDA compatible with the installed PyTorch. Load the same modules
+when preparing the environment manually.
+
+Slurm runs one wrapper per node. Each wrapper creates and prepares its own
+`APPFL_VENV_ROOT/NODE_NAME` environment before starting its role. The default
+parent is `APPFL/appfl_venv_v2`; export `APPFL_VENV_ROOT` to change it.
+The checkout, model, dataset, and JSON must exist at the configured paths on
+every node. Environments and logs may use node-local storage; dependency installs
+require package-index access and a bootstrap Python with `venv` support.
 Submit from the APPFL root:
 
 ```bash
