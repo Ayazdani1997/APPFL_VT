@@ -11,6 +11,9 @@
 #SBATCH --error=llama400m-%j.err
 
 # Submit from the APPFL root. Rank 0 is the server; rank K is ClientK.
+# Set JSON "cuda_device": "cuda:0" or pass --cuda-device cuda:0 after
+# the optional deployment path. CLI takes precedence for all clients.
+# With one GPU per task, cuda:0 selects the GPU exposed to that task.
 set -euo pipefail
 # Load cluster modules here before environment setup or srun. Uncomment and
 # replace these placeholders with names/versions listed by `module avail`.

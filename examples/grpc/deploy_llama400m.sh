@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Start one role; --deployment replaces the default deployment JSON.
+# --cuda-device cuda:N overrides JSON cuda_device for client training only.
 set -euo pipefail
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd -- "$script_dir/../.." && pwd)"
 if [[ $# -lt 1 || ( "$1" != server && "$1" != client ) ]]; then
-    echo "Usage: $0 server|client [--client-index N] [--deployment FILE] [training flags]" >&2
+    echo "Usage: $0 server|client [--client-index N] [--deployment FILE] [--cuda-device cuda:N|cuda|cpu] [training flags]" >&2
     exit 2
 fi
 role="$1"

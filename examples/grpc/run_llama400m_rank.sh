@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Start once per rank through srun or a non-Slurm launcher. Rank 0 serves; rank K runs ClientK.
+# Forward --cuda-device to client training; server config ignores this setting.
+# GPU indices refer to CUDA_VISIBLE_DEVICES, not physical node GPU indices.
 set -euo pipefail
 if (( $# < 4 )); then
-    echo "Usage: $0 LAUNCHER DEPLOYMENT SERVER_HOST LOG_DIR [training flags]" >&2
+    echo "Usage: $0 LAUNCHER DEPLOYMENT SERVER_HOST LOG_DIR [--cuda-device cuda:N|cuda|cpu] [training flags]" >&2
     echo "Set APPFL_RANK and APPFL_WORLD_SIZE outside Slurm." >&2
     exit 2
 fi
@@ -34,7 +36,7 @@ if [[ ! "$node_name" =~ ^[a-zA-Z0-9_.-]+$ || "$node_name" == . || "$node_name" =
     echo "Invalid node name for environment path: $node_name" >&2
     exit 2
 fi
-export APPFL_VENV="$venv_root/$node_name"
+export APPFL_VENV="$venv_root"
 echo "Preparing node environment: $APPFL_VENV"
 bash "$script_dir/setup_llama400m_env.sh"
 # Activate this node's environment before clients use Python for readiness.

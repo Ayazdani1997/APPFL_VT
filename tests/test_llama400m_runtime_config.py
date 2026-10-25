@@ -65,6 +65,22 @@ def test_deployment_partitioning_and_server(tmp_path):
         assert client.comm_configs.compressor_configs.error_bound == 0.003
 
 
+def test_client_device_json_and_cli_precedence(tmp_path):
+    path = deployment_file(tmp_path, cuda_device="cuda:2")
+    client = launcher.load_deployment_config(path, "client", 1)
+    assert client.train_configs.device == "cuda:2"
+    client = launcher.load_deployment_config(path, "client", 1, dict(cuda_device="cpu"))
+    assert client.train_configs.device == "cpu"
+    server = launcher.load_deployment_config(path, "server")
+    assert "train_configs" not in server
+
+
+@pytest.mark.parametrize("device", [0, True, "", "cuda:-1", "invalid"])
+def test_invalid_client_device(tmp_path, device):
+    with pytest.raises(ValueError, match="cuda_device"):
+        launcher.load_deployment_config(deployment_file(tmp_path, cuda_device=device), "client", 1)
+
+
 def test_deployment_network_precedence_and_no_compression(tmp_path):
     path = deployment_file(tmp_path, server_uri="dns:///explicit:5000", enable_compression=False)
     client = launcher.load_deployment_config(path, "client", 1, dict(hostname="other", port=6000, error_bound=0.5))

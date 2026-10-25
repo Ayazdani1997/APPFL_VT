@@ -1,7 +1,7 @@
 {
-  "max_message_size": 134217728,
-  "model_chunk_size": 67108864,
-  "log_dir": "./output/llama400m/no_comp_4m_no_chunking",
+  "max_message_size": 4194304,
+  "model_chunk_size": 4194304,
+  "log_dir": "./output/llama400m/no_comp_4m_no_chunking_multinode",
   "num_clients": 2,
   "base_client": "base_client_no_comp.yaml",
   "base_server": "base_server_no_comp.yaml",

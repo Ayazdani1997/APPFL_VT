@@ -41,7 +41,7 @@ Edit these files before training:
   `client_configs.model_configs.model_kwargs.model_dir` to the same model.
   Set global epochs, local training steps, batch size, and optimizer settings here.
 - [deployment.json](../resources/configs/llama400m/deployment.json): set client
-  count, error bound, chunk/message sizes, compression mode,
+  count, client training device (`cuda_device`), error bound, chunk/message sizes, compression mode,
   and output directory. Sizes are in bytes.
 
 **The scripts do not download the dataset or model by default.** Provide both before
@@ -68,6 +68,7 @@ Replace `/path/to/...` with existing paths on each host.
   "num_clients": 2,
   "base_client": "base_client.yaml",
   "base_server": "base_server.yaml",
+  "cuda_device": "cuda:0",
   "enable_compression": true,
   "error_bound": 1e-10
 }
@@ -233,6 +234,32 @@ Use consistent shared overrides for all roles. Training, compression, and
 communication log directories include the effective error bound (or `no_comp`),
 role/client ID, chunk size, and message size. Repeated identical runs reuse the
 same directories; choose a new `log_dir` for independent experiments.
+
+## Select the client training device
+
+Set `"cuda_device": "cuda:0"` in the deployment JSON to select the training
+device for all clients. A CLI `--cuda-device` overrides the JSON value; when
+neither is supplied, the client's base YAML `train_configs.device` is preserved.
+Accepted values are `cuda`, `cuda:N` (a nonnegative index), and `cpu`. This option
+affects clients only and is ignored by the server.
+
+```bash
+# Override the device for one client launch.
+bash examples/grpc/deploy_llama400m.sh client --client-index 1 --cuda-device cuda:0
+
+# Preview the effective device without starting training.
+bash examples/grpc/deploy_llama400m.sh client --client-index 1 --cuda-device cpu --print-config
+
+# Apply a device override to all Slurm clients.
+sbatch examples/grpc/deploy_llama400m.slurm --cuda-device cuda:0
+```
+
+The rank wrapper also accepts `--cuda-device` after its four positional
+arguments. Direct Python launches accept the same flag, including with `--config`.
+GPU indices refer to the devices visible through `CUDA_VISIBLE_DEVICES`, not
+necessarily physical GPU indices. With the Slurm script's one GPU per task,
+use `cuda:0` for that task's assigned GPU. Device selection does not allocate GPUs;
+outside Slurm, assign separate devices to clients as needed.
 
 ## Use the rank wrapper without Slurm
 

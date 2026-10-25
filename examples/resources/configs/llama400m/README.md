@@ -99,6 +99,7 @@ Replace `/path/to/...` with existing paths on each host.
   "num_clients": 2,
   "base_client": "base_client.yaml",
   "base_server": "base_server.yaml",
+  "cuda_device": "cuda:0",
   "enable_compression": true,
   "error_bound": 1e-10
 }
@@ -176,6 +177,7 @@ Deployment fields:
 | `error_bound` | Positive compressor error bound |
 | `max_message_size`, `model_chunk_size` | Positive integer sizes in bytes |
 | `use_model_chunking` | Enable or disable model chunking |
+| `cuda_device` | Client `train_configs.device`: `cuda`, `cuda:N` (nonnegative index), or `cpu`; ignored by the server |
 | `log_dir` | Parent directory for experiment logs |
 
 The deployment JSONs omit network settings and the base YAMLs use
@@ -204,12 +206,33 @@ CLI flags override JSON, which overrides base YAML settings:
 ```bash
 bash examples/grpc/deploy_llama400m.sh client --client-index 1 \
   --hostname server.example --port 50123 --error-bound 1e-6 \
-  --max-message-size 8388608 --model-chunk-size 2097152 --print-config
+  --max-message-size 8388608 --model-chunk-size 2097152 --cuda-device cuda:0 --print-config
 ```
 
 Remove `--print-config` to start training. Apply shared experiment/network changes
 consistently to all launches. CLI hostname/port override a JSON `server_uri`;
 an explicit CLI `--server-uri` has the highest client-target precedence.
+
+For client device selection, `--cuda-device` overrides JSON `cuda_device`,
+which overrides the base client YAML's `train_configs.device`. If neither
+override is supplied, the YAML device is preserved. The JSON setting applies
+to all clients; separate client commands can select different devices via CLI.
+The setting is ignored for the server. It also works with compression-free
+deployments and direct Python `--config` launches.
+
+Both the rank wrapper and Slurm script forward `--cuda-device`:
+
+```bash
+bash examples/grpc/run_llama400m_rank.sh \
+  "$launcher" "$deployment" "$server_host" "$logs" --cuda-device cuda:0
+sbatch examples/grpc/deploy_llama400m.slurm \
+  examples/resources/configs/llama400m/deployment_no_comp.json --cuda-device cuda:0
+```
+
+The rank example assumes the rank variables and positional paths described in
+the execution guide are already set. GPU indices are relative to
+`CUDA_VISIBLE_DEVICES`. With one GPU exposed per Slurm task, select `cuda:0`.
+This option selects a training device; it does not allocate GPU resources.
 
 Training, communication, and compression log directories reflect the effective
 compression mode/error bound, role/client ID, chunk size, and message size.

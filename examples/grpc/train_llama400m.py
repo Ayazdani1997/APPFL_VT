@@ -19,7 +19,7 @@ import signal
 faulthandler.enable()
 faulthandler.register(signal.SIGUSR1, all_threads=True)
 
-OVERRIDE_KEYS = {"error_bound", "max_message_size", "model_chunk_size", "log_dir"}
+OVERRIDE_KEYS = {"error_bound", "max_message_size", "model_chunk_size", "log_dir", "cuda_device"}
 
 
 def load_runtime_config(config, overrides=None):
@@ -33,6 +33,10 @@ def load_runtime_config(config, overrides=None):
     unknown = set(overrides) - OVERRIDE_KEYS
     if unknown:
         raise ValueError(f"unknown override keys: {', '.join(sorted(unknown))}")
+    if "cuda_device" in overrides:
+        device = overrides["cuda_device"]
+        if not isinstance(device, str) or re.fullmatch(r"cpu|cuda(?::[0-9]+)?", device) is None:
+            raise ValueError("cuda_device must be cpu, cuda, or cuda:N (a process-visible GPU index)")
     for key in ("max_message_size", "model_chunk_size"):
         if key in overrides:
             value = overrides[key]
@@ -46,6 +50,8 @@ def load_runtime_config(config, overrides=None):
         raise ValueError("log_dir must be a nonempty path string")
 
     is_server = "server_configs" in config
+    if not is_server and "cuda_device" in overrides:
+        config.train_configs.device = overrides["cuda_device"]
     role = config.server_configs if is_server else config
     comm = role.comm_configs
     grpc = comm.grpc_configs
@@ -249,6 +255,7 @@ def main() -> None:
     parser.add_argument("--error-bound", type=float)
     parser.add_argument("--max-message-size", type=int, help="gRPC message limit in bytes")
     parser.add_argument("--model-chunk-size", type=int, help="Model chunk size in bytes")
+    parser.add_argument("--cuda-device", help="Client training device: cpu, cuda, or cuda:N; overrides JSON cuda_device; ignored for server")
     parser.add_argument("--log-dir", help="Root directory for experiment logs")
     parser.add_argument("--print-config", action="store_true", help="Print effective YAML and exit without training")
     args = parser.parse_args()
