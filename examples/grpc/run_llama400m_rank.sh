@@ -27,21 +27,24 @@ mkdir -p -- "$logs"
 exec >"$logs/rank_${rank}.out" 2>"$logs/rank_${rank}.err"
 echo "Rank $rank on $(hostname); server: $server_host"
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-# Isolate environments by node, including when the parent directory is shared.
-repo_root="$(cd -- "$script_dir/../.." && pwd)"
-venv_root="${APPFL_VENV_ROOT:-$repo_root/appfl_venv_v2}"
-[[ "$venv_root" = /* ]] || venv_root="$PWD/$venv_root"
-node_name="${SLURMD_NODENAME:-$(hostname)}"
-if [[ ! "$node_name" =~ ^[a-zA-Z0-9_.-]+$ || "$node_name" == . || "$node_name" == .. ]]; then
-    echo "Invalid node name for environment path: $node_name" >&2
+# The setup script creates the named environment in Conda's envs directory.
+export APPFL_VENV="${APPFL_VENV:-appfl_venv_v2}"
+echo "Preparing Conda environment: appfl_venv_v2"
+bash "$script_dir/setup_llama400m_env.sh"
+# Initialize Conda in this shell; activation in the setup subprocess does not persist.
+conda_exe="${CONDA_EXE:-$(command -v conda || true)}"
+if [[ -z "$conda_exe" ]]; then
+    echo "Conda not found; add conda to PATH or set CONDA_EXE to its executable" >&2
     exit 2
 fi
-export APPFL_VENV="$venv_root"
-echo "Preparing node environment: $APPFL_VENV"
-bash "$script_dir/setup_llama400m_env.sh"
-# Activate this node's environment before clients use Python for readiness.
-source "${APPFL_VENV:?Missing environment path}/bin/activate"
-export PYTHON="$APPFL_VENV/bin/python"
+conda_base="$("$conda_exe" info --base)"
+source "$conda_base/etc/profile.d/conda.sh"
+# Resolve explicit relative prefixes before invoking the deployment launcher.
+if [[ "$APPFL_VENV" == */* && "$APPFL_VENV" != /* ]]; then
+    APPFL_VENV="$PWD/$APPFL_VENV"
+fi
+conda activate "$APPFL_VENV"
+export PYTHON="$CONDA_PREFIX/bin/python"
 # Validate the effective deployment after installation on this node.
 metadata="$(bash "$launcher" server --deployment "$deployment" "$@" --hostname "$server_host" --print-config | "$PYTHON" -c '
 import sys

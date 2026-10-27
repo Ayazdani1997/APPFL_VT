@@ -39,7 +39,7 @@ server_configs:
   aggregator_kwargs:
     client_weights_mode: "sample_size"
   device: "cpu"
-  num_global_epochs: 3
+  num_global_epochs: 20
   logging_output_dirname: "./output/llama400m/base"
   logging_output_filename: "server"
   comm_configs:

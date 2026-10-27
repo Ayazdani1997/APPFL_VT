@@ -29,10 +29,30 @@ while [[ $# -gt 0 ]]; do
         *) args+=("$1"); shift ;;
     esac
 done
-export APPFL_VENV="${APPFL_VENV:-$repo_root/appfl_venv_v2}"
-[[ "$APPFL_VENV" = /* ]] || APPFL_VENV="$PWD/$APPFL_VENV"
-bash "$script_dir/setup_llama400m_env.sh"
-source "$APPFL_VENV/bin/activate"
+# Prefer the environment created by setup_llama400m_env.sh when present.
+# Otherwise let Conda resolve the name in its configured environment directories
+# (including its default envs directory). Explicit APPFL_VENV overrides win.
+if [[ -z "${APPFL_VENV:-}" ]]; then
+    if [[ -d "$repo_root/appfl_venv_v2/conda-meta" ]]; then
+        APPFL_VENV="$repo_root/appfl_venv_v2"
+    else
+        APPFL_VENV="appfl_venv_v2"
+    fi
+fi
+export APPFL_VENV
+# Initialize conda for noninteractive shells (including Slurm jobs).
+conda_exe="${CONDA_EXE:-$(command -v conda || true)}"
+if [[ -z "$conda_exe" ]]; then
+    echo "Conda not found; add conda to PATH or set CONDA_EXE to its executable" >&2
+    exit 2
+fi
+conda_base="$("$conda_exe" info --base)"
+source "$conda_base/etc/profile.d/conda.sh"
+# Resolve prefix paths before changing to the repository directory.
+if [[ "$APPFL_VENV" == */* && "$APPFL_VENV" != /* ]]; then
+    APPFL_VENV="$PWD/$APPFL_VENV"
+fi
+conda activate "$APPFL_VENV"
 cd -- "$repo_root"
-exec "$APPFL_VENV/bin/python" "$script_dir/train_llama400m.py" "$role" \
+exec "$CONDA_PREFIX/bin/python" "$script_dir/train_llama400m.py" "$role" \
     --deployment "$deployment" "${args[@]}"

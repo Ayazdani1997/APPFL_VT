@@ -1,8 +1,8 @@
 {
-  "error_bound": 1e-10,
+  "error_bound": 1e-4,
   "max_message_size": 4194304,
   "model_chunk_size": 4194304,
-  "log_dir": "./output/llama400m",
+  "log_dir": "./output/llama400m/4m_no_chunking_multinode",
   "num_clients": 2,
   "base_client": "base_client.yaml",
   "base_server": "base_server.yaml",

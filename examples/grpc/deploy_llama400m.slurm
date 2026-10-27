@@ -34,8 +34,11 @@ if [[ $# -gt 0 && "$1" != --* ]]; then
     [[ "$deployment" = /* ]] || deployment="${SLURM_SUBMIT_DIR:-$repo_root}/$deployment"
     shift
 fi
-export APPFL_VENV_ROOT="${APPFL_VENV_ROOT:-$repo_root/appfl_venv_v2}"
-[[ "$APPFL_VENV_ROOT" = /* ]] || APPFL_VENV_ROOT="$repo_root/$APPFL_VENV_ROOT"
+# Resolve the named environment through Conda on each allocated node.
+export APPFL_VENV="${APPFL_VENV:-appfl_venv_v2}"
+if [[ "$APPFL_VENV" == */* && "$APPFL_VENV" != /* ]]; then
+    APPFL_VENV="$repo_root/$APPFL_VENV"
+fi
 export PYTHONUNBUFFERED=1
 nodes="${SLURM_JOB_NUM_NODES:?Missing allocated node count}"
 if (( ${SLURM_NTASKS:-0} != nodes )); then
