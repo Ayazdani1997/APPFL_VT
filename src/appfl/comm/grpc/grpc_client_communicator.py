@@ -1,3 +1,4 @@
+from appfl.logger import LoggerRegistry
 import gc
 import io
 import os
@@ -46,6 +47,15 @@ class GRPCClientCommunicator:
     gRPC communicator for federated learning clients.
     """
 
+    # Each entry defines the CSV column, initial value, and chunk reducer.
+    # Keep this schema fixed for the lifetime of a communication log.
+    COMM_METRICS = {
+        "outgoing_iterator_s": ("Communication Time (s)", 0.0, sum),
+        "data_buffer_count": ("DataBuffer Count", 0, sum),
+        "request_count": ("Request Count", 0, sum),
+        "model_serialization_s": ("Model Serialization Time (s)", 0.0, sum),
+    }
+
     def __init__(
         self,
         client_id: Union[str, int],
@@ -73,8 +83,11 @@ class GRPCClientCommunicator:
         :param max_message_size: The maximum message size in bytes.
         """
         self.client_id = client_id
+        self.perf_logger_registry = kwargs.get("perf_logger_registry")
+        if self.perf_logger_registry is None:
+            self.perf_logger_registry = LoggerRegistry()
         self.logger = logger
-        self.comm_logger = kwargs.get("comm_logger")
+        self.perf_logger_registry.register_legacy(communication=kwargs.get("comm_logger"))
         self._communication_round = 0
         self._communication_totals = None
         self.max_message_size = max_message_size
@@ -275,12 +288,17 @@ class GRPCClientCommunicator:
 
         meta_data = yaml.dump(kwargs)
 
-        # Serialize the local model
+        metrics = self._new_communication_metrics()
+
+        # Serialize the local model; already encoded bytes require no serialization.
         if isinstance(local_model, Proxy) or (not isinstance(local_model, bytes)):
+            serialization_start = time.perf_counter() if self.perf_logger_registry.get("communication") is not None else None
             if self.optimize_memory:
                 local_model_serialized = self._serialize_model_optimized(local_model)
             else:
                 local_model_serialized = serialize_model(local_model)
+            if serialization_start is not None:
+                metrics["model_serialization_s"] = time.perf_counter() - serialization_start
             del local_model
             gc.collect()
         else:
@@ -299,7 +317,7 @@ class GRPCClientCommunicator:
             request_generator = self._send_request_with_model_optimized(
                 request, local_model_serialized, self.max_message_size
             )
-            request_generator = self._timed_request_iterator(request_generator)
+            request_generator = self._timed_request_iterator(request_generator, metrics)
 
             # Clear local model from memory after sending
             del local_model_serialized
@@ -331,7 +349,8 @@ class GRPCClientCommunicator:
                 meta_data=meta_data,
             )
             request_generator = self._timed_request_iterator(
-                proto_to_databuffer(request, max_message_size=self.max_message_size)
+                proto_to_databuffer(request, max_message_size=self.max_message_size),
+                metrics,
             )
 
             byte_received = b""
@@ -362,52 +381,47 @@ class GRPCClientCommunicator:
         meta_data["status"] = (
             "DONE" if response.header.status == ServerStatus.DONE else "RUNNING"
         )
+        self._record_request_metrics(metrics)
         return model, meta_data
 
-    def _timed_request_iterator(self, request_iterator):
-        """Count outgoing DataBuffers and time consumption of one RPC's iterator."""
-        communication_start = time.perf_counter() if self.comm_logger else None
+    def _new_communication_metrics(self):
+        """Create independent per-request or per-round metric values."""
+        return {key: default for key, (_, default, _) in self.COMM_METRICS.items()}
+
+    def _timed_request_iterator(self, request_iterator, metrics):
+        """Measure outgoing iterator consumption without writing logs in the RPC."""
+        communication_start = time.perf_counter() if self.perf_logger_registry.get("communication") is not None else None
         message_count = 0
         for message in request_iterator:
             message_count += 1
             yield message
-        self._log_communication_time(communication_start, message_count)
+        if communication_start is not None:
+            metrics["outgoing_iterator_s"] = time.perf_counter() - communication_start
+            metrics["data_buffer_count"] = message_count
 
-    def _log_communication_time(
-        self, communication_start: Optional[float], message_count: int
-    ) -> None:
-        """Accumulate iterator time within a chunked round, or log a single RPC."""
-        if self.comm_logger is None or communication_start is None:
+    def _record_request_metrics(self, metrics) -> None:
+        """Record a completed request, reducing chunk values into one round."""
+        if self.perf_logger_registry.get("communication") is None:
             return
-
-        communication_time = time.perf_counter() - communication_start
+        metrics["request_count"] = 1
         if self._communication_totals is not None:
-            self._communication_totals["time"] += communication_time
-            self._communication_totals["messages"] += message_count
-            self._communication_totals["requests"] += 1
-            return
-        self._write_communication_round(communication_time, message_count, 1)
+            for key, (_, _, reducer) in self.COMM_METRICS.items():
+                self._communication_totals[key] = reducer(
+                    (self._communication_totals[key], metrics[key])
+                )
+        else:
+            self._write_communication_round(metrics)
 
-    def _write_communication_round(
-        self, communication_time: float, message_count: int, request_count: int
-    ) -> None:
-        """Write summed outgoing-iterator measurements for one aggregation round."""
-        if self.comm_logger is None:
+    def _write_communication_round(self, metrics) -> None:
+        """Write one completed round using the declared metric schema."""
+        if self.perf_logger_registry.get("communication") is None:
             return
-        if not self.comm_logger.titles:
-            self.comm_logger.log_title(
-                [
-                    "Communication Round", "Communication Time (s)",
-                    "DataBuffer Count", "Request Count",
-                ]
-            )
-        self.comm_logger.log_content(
+        self.perf_logger_registry.write(
+            "communication",
             {
                 "Communication Round": self._communication_round,
-                "Communication Time (s)": communication_time,
-                "DataBuffer Count": message_count,
-                "Request Count": request_count,
-            }
+                **{column: metrics[key] for key, (column, _, _) in self.COMM_METRICS.items()},
+            },
         )
         self._communication_round += 1
 
@@ -500,7 +514,7 @@ class GRPCClientCommunicator:
         # Temporarily disable chunking to avoid recursion
         old_use_chunking = self.use_model_chunking
         self.use_model_chunking = False
-        self._communication_totals = {"time": 0.0, "messages": 0, "requests": 0}
+        self._communication_totals = self._new_communication_metrics()
 
         try:
             # Incremental merging: build global_model progressively
@@ -551,10 +565,8 @@ class GRPCClientCommunicator:
                 )
 
             totals = self._communication_totals
-            if totals["requests"]:
-                self._write_communication_round(
-                    totals["time"], totals["messages"], totals["requests"]
-                )
+            if totals["request_count"]:
+                self._write_communication_round(totals)
             return global_model, final_metadata
 
         finally:

@@ -11,7 +11,7 @@ import re
 from pathlib import Path
 
 from omegaconf import OmegaConf
-from appfl.logger import ClientAgentFileLogger
+from appfl.logger import ClientAgentFileLogger, LoggerRegistry
 
 import faulthandler
 import signal
@@ -157,6 +157,8 @@ def create_compressor_logger(agent_config):
     role_config = agent_config.server_configs if is_server else agent_config
     comm_config = role_config.get("comm_configs", {})
     compression_config = comm_config.get("compressor_configs", {})
+    if not compression_config.get("enable_compression", False):
+        return None
                          
 
 
@@ -184,14 +186,16 @@ def run_server(config) -> None:
     from appfl.agent import ServerAgent
     from appfl.comm.grpc import GRPCServerCommunicator, serve
 
+    perf_logger_registry = LoggerRegistry()
     compression_logger = create_compressor_logger(config)
-    comm_logger = create_comm_logger(config)
+    if compression_logger is not None:
+        perf_logger_registry.register("compression", compression_logger)
+    perf_logger_registry.register("communication", create_comm_logger(config))
     agent = ServerAgent(server_agent_config=config, 
-                        compression_logger=compression_logger,
-                        comm_logger=comm_logger)
+                        perf_logger_registry=perf_logger_registry)
     grpc_config = config.server_configs.comm_configs.grpc_configs
     communicator = GRPCServerCommunicator(
-        agent, logger=agent.logger, **grpc_config
+        agent, logger=agent.logger, perf_logger_registry=perf_logger_registry, **grpc_config
     )
     serve(communicator, **grpc_config)
 
@@ -200,16 +204,18 @@ def run_client(config) -> None:
     from appfl.agent import ClientAgent
     from appfl.comm.grpc import GRPCClientCommunicator
 
+    perf_logger_registry = LoggerRegistry()
     compression_logger = create_compressor_logger(config)
-    comm_logger = create_comm_logger(config)
+    if compression_logger is not None:
+        perf_logger_registry.register("compression", compression_logger)
+    perf_logger_registry.register("communication", create_comm_logger(config))
     agent = ClientAgent(client_agent_config=config, 
-                        compression_logger=compression_logger,
-                        comm_logger=comm_logger)
+                        perf_logger_registry=perf_logger_registry)
     grpc_config = config.comm_configs.grpc_configs
     communicator = GRPCClientCommunicator(
         client_id=agent.get_id(),
         logger=agent.logger,
-        comm_logger=comm_logger,
+        perf_logger_registry=perf_logger_registry,
         **grpc_config,
     )
     shared_config = communicator.get_configuration()

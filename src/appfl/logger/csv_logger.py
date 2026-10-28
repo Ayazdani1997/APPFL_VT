@@ -8,6 +8,7 @@ class CSVLoggerMixin:
     """Add structured CSV output to an APPFL file logger."""
 
     def _init_csv_logger(self, csv_filepath: Optional[str]) -> None:
+        self._csv_lock = threading.RLock()
         self.csv_filepath = csv_filepath
         self.titles = getattr(self, "titles", [])
         if csv_filepath is not None:
@@ -21,13 +22,14 @@ class CSVLoggerMixin:
         if self.csv_filepath is None:
             return
 
-        file_exists = os.path.exists(self.csv_filepath)
-        file_has_content = file_exists and os.path.getsize(self.csv_filepath) > 0
-        with open(self.csv_filepath, "a", newline="", encoding="utf-8") as csv_file:
-            writer = csv.writer(csv_file)
-            if not file_has_content:
-                writer.writerow(self.titles)
-            writer.writerow(contents)
+        with self._csv_lock:
+            file_exists = os.path.exists(self.csv_filepath)
+            file_has_content = file_exists and os.path.getsize(self.csv_filepath) > 0
+            with open(self.csv_filepath, "a", newline="", encoding="utf-8") as csv_file:
+                writer = csv.writer(csv_file)
+                if not file_has_content:
+                    writer.writerow(self.titles)
+                writer.writerow(contents)
 
     def _normalize_content(self, contents: Union[Dict, List]) -> List:
         if not isinstance(contents, (dict, list)):

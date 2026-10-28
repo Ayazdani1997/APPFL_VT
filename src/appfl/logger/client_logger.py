@@ -38,8 +38,9 @@ class ClientAgentFileLogger(CSVLoggerMixin):
         self._init_csv_logger(csv_filepath)
 
         self.logger = logging.getLogger(
-            __name__ + "_" + logging_id if logging_id != "" else str(uuid.uuid4())
+            f"{__name__}.{logging_id}.{file_name}.{uuid.uuid4().hex}"
         )
+        self.logger.propagate = False
         self.logger.setLevel(logging.DEBUG)
         info_fmt = (
             logging.Formatter(

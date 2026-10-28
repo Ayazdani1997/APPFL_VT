@@ -1,3 +1,4 @@
+from appfl.logger import LoggerRegistry
 import gc
 import io
 import copy
@@ -48,6 +49,9 @@ class GRPCServerCommunicator(GRPCCommunicatorServicer):
         **kwargs,
     ) -> None:
         self.server_agent = server_agent
+        self.perf_logger_registry = kwargs.get("perf_logger_registry", server_agent.perf_logger_registry)
+        if self.perf_logger_registry is None:
+            self.perf_logger_registry = LoggerRegistry()
         self.max_message_size = max_message_size
         # Check for optimize_memory in kwargs (from grpc_configs), default to True
         self.optimize_memory = kwargs.get("optimize_memory", True)

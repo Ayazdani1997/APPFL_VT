@@ -1,6 +1,7 @@
 import os
 import pathlib
 import logging
+import uuid
 from .utils import LevelFilter
 from typing import Dict, List, Optional, Union
 from datetime import datetime
@@ -30,7 +31,8 @@ class ServerAgentFileLogger(CSVLoggerMixin):
         )
         self._init_csv_logger(csv_filepath)
 
-        self.logger = logging.getLogger(__name__)
+        self.logger = logging.getLogger(f"{__name__}.{file_name}.{uuid.uuid4().hex}")
+        self.logger.propagate = False
         self.logger.setLevel(logging.DEBUG)
 
         info_fmt = logging.Formatter(

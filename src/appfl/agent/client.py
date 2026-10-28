@@ -1,3 +1,4 @@
+from appfl.logger import LoggerRegistry
 import os
 import gc
 import uuid
@@ -74,13 +75,13 @@ class ClientAgent:
         self, client_agent_config: ClientAgentConfig = ClientAgentConfig(), **kwargs
     ) -> None:
         self.client_agent_config = client_agent_config
-        if "compression_logger" in kwargs:
-            print(">>>>>>>>>>>>>>> Compression logger enabled")
-            self.compression_logger = kwargs["compression_logger"]
-
-        if "comm_logger" in kwargs:
-            print(">>>>>>>>>>>>>>> Comm logger enabled")
-            self.comm_logger = kwargs["comm_logger"]
+        self.perf_logger_registry = kwargs.get("perf_logger_registry")
+        if self.perf_logger_registry is None:
+            self.perf_logger_registry = LoggerRegistry()
+        self.perf_logger_registry.register_legacy(
+            compression=kwargs.get("compression_logger"),
+            communication=kwargs.get("comm_logger"),
+        )
         # Check for optimize_memory in client_agent_config, default to True
         self.optimize_memory = getattr(client_agent_config, "optimize_memory", True)
         self._create_logger()
@@ -149,24 +150,15 @@ class ClientAgent:
             metadata = None
         if self.enable_compression:
             parameters_before_compression = self._get_parameter_size(params)
-            compression_logger = getattr(self, "compression_logger", None)
-            with collect_latencies(enabled=compression_logger is not None) as timing:
+            compression_enabled = self.perf_logger_registry.get("compression") is not None
+            with collect_latencies(enabled=compression_enabled) as timing:
                 compression_start = perf_counter()
                 params = self.compressor.compress_model(params)
                 compression_time = perf_counter() - compression_start
             parameters_after_compression = self._get_parameter_size(params)
-            if hasattr(self, "compression_logger"):
-                if not self.compression_logger.titles:
-                    self.compression_logger.log_title(
-                        [
-                            "Round",
-                            "Compression Time (s)",
-                            "Parameters Before Compression (bytes)",
-                            "Parameters After Compression (bytes)",
-                            *timing.total_seconds
-                        ]
-                    )
-                self.compression_logger.log_content(
+            if compression_enabled:
+                self.perf_logger_registry.write(
+                    "compression",
                     {
                         "Round": max(self.trainer.round - 1, 0),
                         "Compression Time (s)": compression_time,
