@@ -20,8 +20,8 @@ def test_nested_scope_and_exception_restore_outer_context(monkeypatch):
     # No active collector: this must not consume another clock tick.
     with measure_latency("copy"):
         pass
-    assert outer.total_seconds == {"copy": 1.25}
-    assert inner.total_seconds == {"copy": 0.5}
+    assert outer.total_milliseconds == {"copy": 1250.0}
+    assert inner.total_milliseconds == {"copy": 500.0}
 
 
 def test_thread_request_has_separate_collection():
@@ -34,8 +34,8 @@ def test_thread_request_has_separate_collection():
     with collect_latencies() as outer:
         with ThreadPoolExecutor(max_workers=1) as executor:
             inner = executor.submit(request).result()
-    assert outer.total_seconds == {}
-    assert inner.total_seconds["copy"] >= 0.0
+    assert outer.total_milliseconds == {}
+    assert inner.total_milliseconds["copy"] >= 0.0
 
 
 def test_sz2_collects_each_non_scalar_copy_in_batched_models(monkeypatch):
@@ -48,13 +48,13 @@ def test_sz2_collects_each_non_scalar_copy_in_batched_models(monkeypatch):
     )
     model = torch.nn.Linear(2, 2)
     payload = compressor.compress_model([model.state_dict()] * 2, batched=True)
-    ticks = iter(range(16))
+    ticks = iter(range(24))
     monkeypatch.setattr("appfl.misc.timing.perf_counter", lambda: next(ticks))
     with collect_latencies() as context:
         decoded = compressor.decompress_model(payload, model, batched=True)
-    assert context.total_seconds == {
-        "SZ2 NumPy Frombuffer Time (s)": 4.0,
-        "SZ2 Tensor Copy Time (s)": 4.0,
+    assert context.total_milliseconds == {
+        "tensor decompress (ms)": 4000.0,
+        "Tensor Copy Time (ms)": 8000.0,
     }
     for weights in decoded:
         for name, expected in model.state_dict().items():
@@ -71,7 +71,7 @@ def test_disabled_collection_does_not_read_clock(monkeypatch):
             with measure_latency("copy"):
                 pass
     assert disabled is None
-    assert outer.total_seconds == {}
+    assert outer.total_milliseconds == {}
 
 
 def test_named_counters_accumulate_independently(monkeypatch):
@@ -84,4 +84,4 @@ def test_named_counters_accumulate_independently(monkeypatch):
             pass
         with measure_latency(key="copy"):
             pass
-    assert context.total_seconds == {"copy": 1.25, "convert": 0.5}
+    assert context.total_milliseconds == {"copy": 1250.0, "convert": 500.0}

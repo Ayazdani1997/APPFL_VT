@@ -154,17 +154,17 @@ class ClientAgent:
             with collect_latencies(enabled=compression_enabled) as timing:
                 compression_start = perf_counter()
                 params = self.compressor.compress_model(params)
-                compression_time = perf_counter() - compression_start
+                compression_time = (perf_counter() - compression_start) * 1000.0
             parameters_after_compression = self._get_parameter_size(params)
             if compression_enabled:
                 self.perf_logger_registry.write(
                     "compression",
                     {
                         "Round": max(self.trainer.round - 1, 0),
-                        "Compression Time (s)": compression_time,
+                        "Compression Time (ms)": compression_time,
                         "Parameters Before Compression (bytes)": parameters_before_compression,
                         "Parameters After Compression (bytes)": parameters_after_compression,
-                        **timing.total_seconds,
+                        **timing.total_milliseconds,
                     }
                 )
             # Memory optimization: Garbage collection after compression

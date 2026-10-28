@@ -101,7 +101,7 @@ class SZ:
         self.sz.SZ_decompress.restype = ctypes.POINTER(
             ctypes.c_float if original_dtype == np.float32 else ctypes.c_double
         )
-        with measure_latency("C tensor decompress (s)"):
+        with measure_latency("C tensor decompress (ms)"):
             data_dec_c = self.sz.SZ_decompress(
                 ori_type,
                 data_cmpr.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte)),
@@ -114,7 +114,7 @@ class SZ:
             )
 
         
-        with measure_latency("C Tensor Copy Time (s)"):
+        with measure_latency("C Tensor Copy Time (ms)"):
             data_dec = np.array(data_dec_c[: np.prod(original_shape)]).reshape(
                 original_shape
             )
@@ -136,7 +136,7 @@ class SZ:
         cmpr_size = ctypes.c_size_t()
         r5, r4, r3, r2, r1 = [0] * (5 - len(data.shape)) + list(data.shape)
         datatype, datap = self.__sz_datatype(data.dtype, data)
-        with measure_latency("C tensor compress (s)"):
+        with measure_latency("C tensor compress (ms)"):
             data_cmpr_c = self.sz.SZ_compress_args(
                 datatype,
                 datap,
@@ -153,7 +153,7 @@ class SZ:
             )
 
         cmpr_ratio = data.size * data.itemsize / cmpr_size.value
-        with measure_latency("C Tensor Copy Time (s)"):
+        with measure_latency("C Tensor Copy Time (ms)"):
             data_cmpr = np.array(data_cmpr_c[: cmpr_size.value], dtype=np.uint8)
         self.libc.free(data_cmpr_c)
         return data_cmpr, cmpr_ratio

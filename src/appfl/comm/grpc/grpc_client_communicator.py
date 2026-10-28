@@ -50,10 +50,10 @@ class GRPCClientCommunicator:
     # Each entry defines the CSV column, initial value, and chunk reducer.
     # Keep this schema fixed for the lifetime of a communication log.
     COMM_METRICS = {
-        "outgoing_iterator_s": ("Communication Time (s)", 0.0, sum),
+        "outgoing_iterator_ms": ("Communication Time (ms)", 0.0, sum),
         "data_buffer_count": ("DataBuffer Count", 0, sum),
         "request_count": ("Request Count", 0, sum),
-        "model_serialization_s": ("Model Serialization Time (s)", 0.0, sum),
+        "model_serialization_ms": ("Model Serialization Time (ms)", 0.0, sum),
     }
 
     def __init__(
@@ -298,7 +298,7 @@ class GRPCClientCommunicator:
             else:
                 local_model_serialized = serialize_model(local_model)
             if serialization_start is not None:
-                metrics["model_serialization_s"] = time.perf_counter() - serialization_start
+                metrics["model_serialization_ms"] = (time.perf_counter() - serialization_start) * 1000.0
             del local_model
             gc.collect()
         else:
@@ -396,7 +396,7 @@ class GRPCClientCommunicator:
             message_count += 1
             yield message
         if communication_start is not None:
-            metrics["outgoing_iterator_s"] = time.perf_counter() - communication_start
+            metrics["outgoing_iterator_ms"] = (time.perf_counter() - communication_start) * 1000.0
             metrics["data_buffer_count"] = message_count
 
     def _record_request_metrics(self, metrics) -> None:
@@ -796,7 +796,7 @@ class GRPCClientCommunicator:
             if chunk_count % 20 == 0:
                 gc.collect()
 
-        # Parse metadata from first chunk(s)
+        # Parse metadata from first chunk(ms)
         response = response_type()
         metadata_size = 0
 

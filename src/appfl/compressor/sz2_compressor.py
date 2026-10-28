@@ -244,7 +244,7 @@ class SZ2Compressor(BaseCompressor):
         for name, param in model.state_dict().items():
             if "weight" in name and param.numel() > self.param_count_threshold:
                 # print(f">>> YESS Weight in name = {name}")
-                with measure_latency("tensor decompress (s)"):
+                with measure_latency("tensor decompress (ms)"):
                     compressed_weights[name] = self._decompress(
                         cmp_data=compressed_weights[name],
                         ori_shape=(param.numel(),),
@@ -252,7 +252,7 @@ class SZ2Compressor(BaseCompressor):
                     ).astype(np.float32)
             else:
                 # print(f">>> NOOOO Weight not in name = {name}")
-                with measure_latency("tensor decompress (s)"):
+                with measure_latency("tensor decompress (ms)"):
                     if self.lossless_compressor == "zstd":
                         compressed_weights[name] = zstd.decompress(compressed_weights[name])
                     elif self.lossless_compressor == "gzip":
@@ -267,17 +267,17 @@ class SZ2Compressor(BaseCompressor):
                         compressed_weights[name] = lzma.decompress(compressed_weights[name])
                     else:
                         raise NotImplementedError
-                with measure_latency("Tensor Copy Time (s)"):
+                with measure_latency("Tensor Copy Time (ms)"):
                     compressed_weights[name] = np.frombuffer(
                         compressed_weights[name], dtype=np.float32
                     )
             if param.shape == torch.Size([]):
-                with measure_latency("Tensor Copy Time (s)"):
+                with measure_latency("Tensor Copy Time (ms)"):
                     copy_arr = deepcopy(compressed_weights[name])
                     copy_tensor = torch.from_numpy(copy_arr)
                     decompressed_weights[name] = torch.tensor(copy_tensor)
             else:
-                with measure_latency("Tensor Copy Time (s)"):
+                with measure_latency("Tensor Copy Time (ms)"):
                     copy_arr = deepcopy(compressed_weights[name])
                     copy_tensor = torch.from_numpy(copy_arr)
                     decompressed_weights[name] = copy_tensor.reshape(param.shape)

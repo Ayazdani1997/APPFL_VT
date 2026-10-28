@@ -526,14 +526,14 @@ class ServerAgent:
             compression_enabled = self.perf_logger_registry.get("compression") is not None
             with collect_latencies(enabled=compression_enabled) as timing:
                 model = self.compressor.decompress_model(model_bytes, self.model)
-            decompression_time = perf_counter() - decompression_start
+            decompression_time = (perf_counter() - decompression_start) * 1000.0
             if compression_enabled:
                 self.perf_logger_registry.write(
                     "compression",
                     {
                         "Round": self.scheduler.get_num_global_epochs(),
-                        "Total Decompression Time (s)": decompression_time,
-                        **timing.total_seconds,
+                        "Total Decompression Time (ms)": decompression_time,
+                        **timing.total_milliseconds,
                     }
                 )
             # Memory optimization: Garbage collection after decompression

@@ -9,9 +9,9 @@ from typing import Dict, Optional
 
 @dataclass
 class LatencyContext:
-    """Elapsed seconds accumulated per key, retained after collection."""
+    """Elapsed milliseconds accumulated per key, retained after collection."""
 
-    total_seconds: Dict[str, float] = field(default_factory=dict)
+    total_milliseconds: Dict[str, float] = field(default_factory=dict)
 
 
 _current_latency_context: ContextVar[Optional[LatencyContext]] = ContextVar(
@@ -37,7 +37,7 @@ def collect_latencies(enabled: bool = True):
 
 @contextmanager
 def measure_latency(key: str):
-    """Add a block's elapsed seconds to the named key in the active collection."""
+    """Add a block's elapsed milliseconds to the named key in the active collection."""
     context = _current_latency_context.get()
     if context is None:
         yield
@@ -46,5 +46,5 @@ def measure_latency(key: str):
     try:
         yield
     finally:
-        elapsed = perf_counter() - start
-        context.total_seconds[key] = context.total_seconds.get(key, 0.0) + elapsed
+        elapsed = (perf_counter() - start) * 1000.0
+        context.total_milliseconds[key] = context.total_milliseconds.get(key, 0.0) + elapsed
