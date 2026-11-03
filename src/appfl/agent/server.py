@@ -509,14 +509,25 @@ class ServerAgent:
         """Deserialize the model from bytes."""
         # print(f">>>>>>>>>>>>> Server-side enable_compression = {self.enable_compression}")
         if not self.enable_compression:
+            deserialization_start = perf_counter()
             # Memory optimization: Use context manager and load to CPU first
             if self.optimize_memory:
                 with io.BytesIO(model_bytes) as buffer:
                     model = torch.load(buffer, map_location="cpu")
-                gc.collect()
-                return model
             else:
-                return torch.load(io.BytesIO(model_bytes))
+                model = torch.load(io.BytesIO(model_bytes))
+            deserialization_time = (perf_counter() - deserialization_start) * 1000.0
+            if self.perf_logger_registry.get("compression") is not None:
+                self.perf_logger_registry.write(
+                    "compression",
+                    {
+                        "Round": self.scheduler.get_num_global_epochs(),
+                        "Total Deserialization Time (ms)": deserialization_time,
+                    },
+                )
+            if self.optimize_memory:
+                gc.collect()
+            return model
         else:
             if self.model is None:
                 raise ValueError(

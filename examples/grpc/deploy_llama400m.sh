@@ -54,5 +54,6 @@ if [[ "$APPFL_VENV" == */* && "$APPFL_VENV" != /* ]]; then
 fi
 conda activate "$APPFL_VENV"
 cd -- "$repo_root"
+export LD_PRELOAD="$CONDA_PREFIX/lib/libzstd.so.1:$CONDA_PREFIX/lib/libz.so.1${LD_PRELOAD:+:$LD_PRELOAD}"
 exec "$CONDA_PREFIX/bin/python" "$script_dir/train_llama400m.py" "$role" \
     --deployment "$deployment" "${args[@]}"
