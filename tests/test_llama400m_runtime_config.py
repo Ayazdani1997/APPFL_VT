@@ -158,3 +158,16 @@ def test_deployment_default_and_cli_address(tmp_path):
         config = launcher.load_deployment_config(path, role, index, dict(hostname="node01", port=9012))
         comm = config.server_configs.comm_configs if role == "server" else config.comm_configs
         assert comm.grpc_configs.server_uri == "node01:9012"
+
+
+def test_lazy_deserializer_logger_uses_log_dir(tmp_path):
+    config = launcher.load_runtime_config(
+        ROOT / "examples/resources/configs/llama400m/base_server_no_comp.yaml",
+        {"log_dir": str(tmp_path)},
+    )
+    registry = launcher.create_perf_logger_registry(config)
+    registry.write("deserializer", {"Round": 0, "Total Deserialization Time (ms)": 1.0})
+    logger = registry.get("deserializer")
+    assert Path(logger.csv_filepath).parent == tmp_path
+    assert Path(logger.csv_filepath).name.startswith("deserializer_log_Server_")
+    assert Path(logger.csv_filepath).is_file()

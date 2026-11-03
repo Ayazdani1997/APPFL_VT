@@ -517,14 +517,13 @@ class ServerAgent:
             else:
                 model = torch.load(io.BytesIO(model_bytes))
             deserialization_time = (perf_counter() - deserialization_start) * 1000.0
-            if self.perf_logger_registry.get("compression") is not None:
-                self.perf_logger_registry.write(
-                    "compression",
-                    {
-                        "Round": self.scheduler.get_num_global_epochs(),
-                        "Total Deserialization Time (ms)": deserialization_time,
-                    },
-                )
+            self.perf_logger_registry.write(
+                "deserializer",
+                {
+                    "Round": self.scheduler.get_num_global_epochs(),
+                    "Total Deserialization Time (ms)": deserialization_time,
+                },
+            )
             if self.optimize_memory:
                 gc.collect()
             return model

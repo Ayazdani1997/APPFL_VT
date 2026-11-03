@@ -64,3 +64,25 @@ def test_first_write_fixes_schema_and_legacy_adapter(tmp_path):
     registry.enable("compression")
     with pytest.raises(ValueError, match="not defined"):
         registry.write("compression", {"other": 1})
+
+
+def test_missing_logger_factory_is_atomic(tmp_path):
+    created = []
+
+    def factory(name):
+        created.append(name)
+        return ClientAgentFileLogger(
+            file_dir=str(tmp_path), file_name=f"{name}_log", experiment_id="exp"
+        )
+
+    registry = LoggerRegistry(logger_factory=factory)
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        list(pool.map(lambda i: registry.write("deserializer", {"ms": i}), range(20)))
+    logger = registry.get("deserializer")
+    registry.disable("deserializer")
+    registry.write("deserializer", {"ms": 99})
+    assert created == ["deserializer"]
+    with open(logger.csv_filepath) as stream:
+        rows = list(csv.reader(stream))
+    assert rows[0] == ["ms"]
+    assert len(rows) == 21

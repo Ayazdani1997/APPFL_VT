@@ -7,11 +7,12 @@ class LoggerRegistry:
     """Route completed measurement rows to independently configured loggers.
 
     Register destinations before processing requests. Omitted columns are fixed
-    atomically by the first dictionary write. Missing or disabled names
-    silently skip writes. Schemas stay fixed for each registered destination.
+    atomically by the first dictionary write. Missing names use logger_factory
+    when configured; otherwise missing or disabled names silently skip writes. Schemas stay fixed for each registered destination.
     """
 
-    def __init__(self):
+    def __init__(self, logger_factory=None):
+        self._logger_factory = logger_factory
         self._entries = {}
         self._lock = threading.RLock()
 
@@ -61,6 +62,9 @@ class LoggerRegistry:
         """Write a completed row; call after stopping measurement timers."""
         with self._lock:
             entry = self._entries.get(name)
+            if entry is None and self._logger_factory is not None:
+                self.register(name, self._logger_factory(name))
+                entry = self._entries[name]
             if entry is None or not entry["enabled"]:
                 return
             logger = entry["logger"]

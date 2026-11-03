@@ -182,11 +182,28 @@ def create_comm_logger(agent_config):
         experiment_id=str(agent_config.get("experiment_id", "")),
     )
 
+def create_perf_logger_registry(agent_config):
+    """Create missing measurement loggers under the resolved log_dir root."""
+    is_server = "server_configs" in agent_config
+    train = agent_config.server_configs if is_server else agent_config.train_configs
+    root = Path(train.logging_output_dirname).parent
+
+    def create_logger(name):
+        return ClientAgentFileLogger(
+            logging_id="Server" if is_server else str(agent_config.get("client_id", "")),
+            file_dir=str(root),
+            file_name=f"{name}_log",
+            experiment_id=str(agent_config.get("experiment_id", "")),
+        )
+
+    return LoggerRegistry(logger_factory=create_logger)
+
+
 def run_server(config) -> None:
     from appfl.agent import ServerAgent
     from appfl.comm.grpc import GRPCServerCommunicator, serve
 
-    perf_logger_registry = LoggerRegistry()
+    perf_logger_registry = create_perf_logger_registry(config)
     compression_logger = create_compressor_logger(config)
     if compression_logger is not None:
         perf_logger_registry.register("compression", compression_logger)
@@ -204,7 +221,7 @@ def run_client(config) -> None:
     from appfl.agent import ClientAgent
     from appfl.comm.grpc import GRPCClientCommunicator
 
-    perf_logger_registry = LoggerRegistry()
+    perf_logger_registry = create_perf_logger_registry(config)
     compression_logger = create_compressor_logger(config)
     if compression_logger is not None:
         perf_logger_registry.register("compression", compression_logger)
